@@ -38,8 +38,8 @@ deploy-to-k8s:
     # K8s YAML dosyalarındaki eski image etiketlerini 'sed' komutuyla yeni TAG ile değiştiriyoruz
     # MacOS runner kullanıyorsan sed komutunda uyumsuzluk olmaması için (-i '') kullanıyoruz. 
     # Linux kullanıyorsan (-i) yeterlidir. Aşağıdaki yapı evrensel bir sed değişimidir.
-    - sed -i.bak "s|image: $BACKEND_IMAGE:.*|image: $BACKEND_IMAGE:$TAG|g" backend.yaml
-    - sed -i.bak "s|image: $FRONTEND_IMAGE:.*|image: $FRONTEND_IMAGE:$TAG|g" frontend.yaml
+    - 'sed -i.bak "s|image: $BACKEND_IMAGE:.*|image: $BACKEND_IMAGE:$TAG|g" backend.yaml'
+    - 'sed -i.bak "s|image: $FRONTEND_IMAGE:.*|image: $FRONTEND_IMAGE:$TAG|g" frontend.yaml'
     - rm -f *.bak
     
     # Değişen YAML dosyalarını K8s'e uygula
