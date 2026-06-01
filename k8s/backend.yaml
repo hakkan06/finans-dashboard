@@ -15,9 +15,9 @@ spec:
       containers:
       - name: finans-backend
         image: finans-backend:latest
-	env:
-	- name: TZ
-	  value: "Europe/Istanbul"
+        env:
+        - name: TZ
+          value: "Europe/Istanbul"
         # Docker Desktop'ın bilgisayarındaki lokal imajı bulabilmesi için bu satır kritik:
         imagePullPolicy: IfNotPresent
         ports:
