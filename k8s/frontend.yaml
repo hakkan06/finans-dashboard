@@ -14,7 +14,10 @@ spec:
     spec:
       containers:
       - name: finans-frontend
-        image: finans-frontend:v14
+        image: finans-frontend:latest
+        env:
+        - name: TZ
+          value: "Europe/Istanbul"
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8501
