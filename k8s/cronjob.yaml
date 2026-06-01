@@ -15,8 +15,8 @@ spec:
           containers:
           - name: snapshot-curl
             image: curlimages/curl:latest
-       	    env:
-       	    - name: TZ
+            env:
+            - name: TZ
               value: "Europe/Istanbul"
             # Backend servisinin adı k8s yaml dosyasındaki service adına (finans-backend) göre düzenlenmiştir
             args:
