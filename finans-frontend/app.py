@@ -8,7 +8,7 @@ from datetime import date
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 st.set_page_config(page_title="Finans Dashboard", layout="wide", page_icon="📈")
-st.title("💰 Varlık ve Borç Yönetim Paneli")
+st.title("💰 Varlık ve Borç Yönetim Paneli (Canlı)")
 
 @st.cache_data(ttl=3600)
 def get_cached_usd_rate():
