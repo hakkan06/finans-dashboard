@@ -2,25 +2,72 @@ from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 import yfinance as yf
 from tefas import Crawler
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 import calendar
 
 from . import models, schemas
 from .database import engine, get_db
 
-# Bu komut veritabanını bozmadan eksik olan PortfolioHistory tablosunu otomatik yaratacak
+# --- YENİ EKLENEN: İŞLETİM SİSTEMİNDEN BAĞIMSIZ SABİT TÜRKİYE SAATİ (UTC+3) ---
+TR_TZ = timezone(timedelta(hours=3))
+
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Finans API")
 
-# --- YENİ: TREND VE SNAPSHOT ENDPOINT'LERİ ---
+@app.post("/system/daily-job")
+def run_daily_job(db: Session = Depends(get_db)):
+    update_asset_prices(db)
+    usd_try = 32.20
+    try:
+        usd_hist = yf.Ticker("TRY=X").history(period="5d")
+        if not usd_hist.empty:
+            usd_try = float(usd_hist["Close"].iloc[-1])
+    except:
+        pass
+        
+    summary = get_portfolio_summary(db)
+    total_assets = 0.0
+    for item in summary:
+        val = item["net_value"]
+        if item["asset_type"] == "US_STOCK":
+            val *= usd_try
+        total_assets += val
+        
+    total_debts = 0.0
+    debts = db.query(models.Debt).all()
+    for d in debts:
+        for inst in d.installments:
+            if not inst.is_paid:
+                total_debts += inst.amount
+                
+    # Gece yarısı kaydını atarken yerel tarihi baz alıyoruz
+    today = datetime.now(TR_TZ).date()
+    record = db.query(models.PortfolioHistory).filter(models.PortfolioHistory.record_date == today).first()
+    net = total_assets - total_debts
+    
+    if record:
+        record.total_assets = total_assets
+        record.total_debts = total_debts
+        record.net_worth = net
+    else:
+        new_record = models.PortfolioHistory(
+            record_date=today,
+            total_assets=total_assets,
+            total_debts=total_debts,
+            net_worth=net
+        )
+        db.add(new_record)
+    db.commit()
+    
+    return {"message": "Gece otomasyonu tamamlandı", "net_worth": net}
+
 @app.post("/portfolio/snapshot")
 def save_snapshot(snapshot: schemas.SnapshotCreate, db: Session = Depends(get_db)):
-    today = date.today()
+    today = datetime.now(TR_TZ).date()
     record = db.query(models.PortfolioHistory).filter(models.PortfolioHistory.record_date == today).first()
     net = snapshot.total_assets - snapshot.total_debts
     
-    # Eğer bugün zaten bir kayıt atıldıysa (sayfa yenilendiyse) üzerine yazar, yoksa yeni kayıt atar.
     if record:
         record.total_assets = snapshot.total_assets
         record.total_debts = snapshot.total_debts
@@ -125,11 +172,13 @@ def update_asset_prices(db: Session = Depends(get_db)):
                 hist = yf.Ticker(asset.symbol).history(period="5d")
                 if not hist.empty:
                     asset.current_price = float(hist["Close"].iloc[-1])
-                    asset.last_updated = datetime.now()
+                    # Kod seviyesinde zamanı Türkiye'ye sabitliyoruz
+                    asset.last_updated = datetime.now(TR_TZ)
                     updated_count += 1
                     
             elif asset.asset_type == "FUND":
-                end_date = datetime.now()
+                # Tefas tarihçesi de TR saati baz alınarak hesaplanıyor
+                end_date = datetime.now(TR_TZ)
                 start_date = end_date - timedelta(days=5)
                 data = crawler.fetch(start=start_date.strftime("%Y-%m-%d"),
                                      end=end_date.strftime("%Y-%m-%d"),
@@ -137,7 +186,7 @@ def update_asset_prices(db: Session = Depends(get_db)):
                 if not data.empty:
                     data = data.sort_values(by="date", ascending=False)
                     asset.current_price = float(data.iloc[0]['price'])
-                    asset.last_updated = datetime.now()
+                    asset.last_updated = datetime.now(TR_TZ)
                     updated_count += 1
 
             elif asset.asset_type == "COMMODITY":
@@ -148,31 +197,31 @@ def update_asset_prices(db: Session = Depends(get_db)):
                         xau_hist = yf.Ticker("GC=F").history(period="5d")
                         if not xau_hist.empty:
                             asset.current_price = (float(xau_hist["Close"].iloc[-1]) * usd_try) / 31.1034768
-                            asset.last_updated = datetime.now()
+                            asset.last_updated = datetime.now(TR_TZ)
                             updated_count += 1
                     elif asset.symbol.upper() in ["GUMUS", "XAG", "GRAMGUMUS"]:
                         xag_hist = yf.Ticker("SI=F").history(period="5d")
                         if not xag_hist.empty:
                             asset.current_price = (float(xag_hist["Close"].iloc[-1]) * usd_try) / 31.1034768
-                            asset.last_updated = datetime.now()
+                            asset.last_updated = datetime.now(TR_TZ)
                             updated_count += 1
                             
             elif asset.asset_type == "FIAT":
                 if asset.symbol.upper() in ["TRY", "TL"]:
                     asset.current_price = 1.0
-                    asset.last_updated = datetime.now()
+                    asset.last_updated = datetime.now(TR_TZ)
                     updated_count += 1
                 elif asset.symbol.upper() in ["USD", "DOLAR"]:
                     usd_hist = yf.Ticker("TRY=X").history(period="5d")
                     if not usd_hist.empty:
                         asset.current_price = float(usd_hist["Close"].iloc[-1])
-                        asset.last_updated = datetime.now()
+                        asset.last_updated = datetime.now(TR_TZ)
                         updated_count += 1
                 elif asset.symbol.upper() in ["EUR", "EURO"]:
                     eur_hist = yf.Ticker("EURTRY=X").history(period="5d")
                     if not eur_hist.empty:
                         asset.current_price = float(eur_hist["Close"].iloc[-1])
-                        asset.last_updated = datetime.now()
+                        asset.last_updated = datetime.now(TR_TZ)
                         updated_count += 1
 
         except Exception as e:
@@ -245,55 +294,3 @@ def create_debt_schedule(schedule: schemas.DebtScheduleCreate, db: Session = Dep
         
     db.commit()
     return {"message": f"{schedule.name} planı oluşturuldu."}
-# --- YENİ EKLENEN: KUBERNETES CRONJOB İÇİN GECE OTOMASYON ENDPOINT'İ ---
-@app.post("/system/daily-job")
-def run_daily_job(db: Session = Depends(get_db)):
-    # 1. Önce tüm piyasa fiyatlarını en güncel haliyle çek
-    update_asset_prices(db)
-    
-    # 2. Canlı Dolar Kurunu Çek (US_STOCK varlıklarını TL'ye çevirmek için)
-    usd_try = 32.20
-    try:
-        usd_hist = yf.Ticker("TRY=X").history(period="5d")
-        if not usd_hist.empty:
-            usd_try = float(usd_hist["Close"].iloc[-1])
-    except:
-        pass
-        
-    # 3. Toplam Varlıkları TL Cinsinden Hesapla
-    summary = get_portfolio_summary(db)
-    total_assets = 0.0
-    for item in summary:
-        val = item["net_value"]
-        if item["asset_type"] == "US_STOCK":
-            val *= usd_try
-        total_assets += val
-        
-    # 4. Toplam Borçları Hesapla (Sadece ödenmemiş taksitler)
-    total_debts = 0.0
-    debts = db.query(models.Debt).all()
-    for d in debts:
-        for inst in d.installments:
-            if not inst.is_paid:
-                total_debts += inst.amount
-                
-    # 5. Gece Yarısı Snapshot'ını Veritabanına Yaz
-    today = date.today()
-    record = db.query(models.PortfolioHistory).filter(models.PortfolioHistory.record_date == today).first()
-    net = total_assets - total_debts
-    
-    if record:
-        record.total_assets = total_assets
-        record.total_debts = total_debts
-        record.net_worth = net
-    else:
-        new_record = models.PortfolioHistory(
-            record_date=today,
-            total_assets=total_assets,
-            total_debts=total_debts,
-            net_worth=net
-        )
-        db.add(new_record)
-    db.commit()
-    
-    return {"message": "Gece otomasyonu tamamlandı", "net_worth": net}
