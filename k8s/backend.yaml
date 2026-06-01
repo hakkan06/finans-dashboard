@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finans-backend-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: finans-backend
+  template:
+    metadata:
+      labels:
+        app: finans-backend
+    spec:
+      containers:
+      - name: finans-backend
+        image: finans-backend:v22
+        # Docker Desktop'ın bilgisayarındaki lokal imajı bulabilmesi için bu satır kritik:
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DB_HOST
+          # database.py dosyasında os.getenv("DB_HOST") yazmıştık.
+          # K8s içindeki Postgres servisinin adını vererek iki container'ı bağlıyoruz:
+          value: "finans-postgres-service"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: finans-backend-service
+spec:
+  selector:
+    app: finans-backend
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000

@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finans-frontend-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: finans-frontend
+  template:
+    metadata:
+      labels:
+        app: finans-frontend
+    spec:
+      containers:
+      - name: finans-frontend
+        image: finans-frontend:v14
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8501
+        env:
+        - name: API_URL
+          # Frontend'in, Backend'e K8s iç ağından ulaşması için servis adını veriyoruz
+          value: "http://finans-backend-service:8000"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: finans-frontend-service
+spec:
+  selector:
+    app: finans-frontend
+  ports:
+    - protocol: TCP
+      port: 8501
+      targetPort: 8501

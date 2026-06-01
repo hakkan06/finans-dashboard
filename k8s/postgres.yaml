@@ -1,0 +1,61 @@
+# 1. Disk Alanı
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: finans-postgres-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# 2. Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finans-postgres-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: finans-postgres
+  template:
+    metadata:
+      labels:
+        app: finans-postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          value: "finans_user"
+        - name: POSTGRES_PASSWORD
+          value: "finans_pass"
+        - name: POSTGRES_DB
+          value: "finans_db"
+        volumeMounts:
+        - mountPath: /var/lib/postgresql/data
+          name: finans-postgres-data
+      volumes:
+      - name: finans-postgres-data
+        persistentVolumeClaim:
+          claimName: finans-postgres-pvc
+
+---
+# 3. Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: finans-postgres-service
+spec:
+  selector:
+    app: finans-postgres
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
