@@ -310,15 +310,16 @@ with tab_trend:
                 y=df_hist['total_assets'],
                 fill='tozeroy',
                 mode='lines',
-                line=dict(color='#2962FF', width=3), # Finansal Lacivert/Mavi tonu
+                line=dict(color='#2962FF', width=3), 
                 fillcolor='rgba(41, 98, 255, 0.15)',
                 name='Toplam Varlık',
                 hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Varlık:</b> ₺%{y:,.2f}<extra></extra>'
             ))
 
             fig.update_layout(
+                separators=".,", # <-- DÜZELTİLEN YER: Ayraçlar artık Layout seviyesinde
                 margin=dict(l=0, r=0, t=20, b=0),
-                hovermode='x unified', # İmleç ile hareket eden dikey çizgi
+                hovermode='x unified',
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
                 xaxis=dict(
@@ -329,12 +330,11 @@ with tab_trend:
                 yaxis=dict(
                     showgrid=True,
                     gridcolor='rgba(128, 128, 128, 0.15)',
-                    tickprefix="₺",
-                    separators=".,"
+                    tickprefix="₺"
+                    # separators parametresi buradan kaldırıldı
                 )
             )
 
-            # Eksen çizgileri ve crosshair (Investing tarzı kesişen imleç çizgileri)
             fig.update_xaxes(showspikes=True, spikecolor="gray", spikesnap="cursor", spikemode="across")
             fig.update_yaxes(showspikes=True, spikecolor="gray", spikethickness=1)
 
@@ -343,5 +343,7 @@ with tab_trend:
             st.caption("Veriler, sisteme giriş yaptığınız veya 'Piyasa Fiyatlarını Güncelle' butonuna bastığınız günlerin kapanış değerlerini baz alır.")
         else:
             st.info("Henüz grafik çizecek kadar tarihsel veri birikmedi. (Grafik yarına veya fiyat güncellediğinizde oluşacaktır).")
-    except:
-        st.error("Trend verileri yüklenirken bağlantı sorunu oluştu.")
+            
+    # Eğer başka bir kodlama veya bağlantı hatası olursa artık bize tam yerini söyleyecek
+    except Exception as e:
+        st.error(f"Grafik yüklenirken bir sorun oluştu. Hata Detayı: {repr(e)}")
