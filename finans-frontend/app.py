@@ -4,11 +4,12 @@ import pandas as pd
 import os
 import time
 from datetime import date
+import plotly.graph_objects as go
 
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 st.set_page_config(page_title="Finans Dashboard", layout="wide", page_icon="📈")
-st.title("💰 Varlık ve Borç Yönetim Paneli (Canlı)")
+st.title("💰 Varlık ve Borç Yönetim Paneli")
 
 @st.cache_data(ttl=3600)
 def get_cached_usd_rate():
@@ -52,7 +53,6 @@ summary_data = []
 debts = []
 
 try:
-    # Varlıkları Çek ve TL Cinsinden Topla
     res_assets = requests.get(f"{API_URL}/portfolio/summary", timeout=5)
     if res_assets.status_code == 200:
         summary_data = res_assets.json()
@@ -62,7 +62,6 @@ try:
                 net_val *= usd_try_rate
             global_total_assets += net_val
 
-    # Borçları Çek ve Ödenmemiş Taksitleri Topla
     res_debts = requests.get(f"{API_URL}/debts/", timeout=5)
     if res_debts.status_code == 200:
         debts = res_debts.json()
@@ -71,14 +70,12 @@ try:
                 if not inst['is_paid']:
                     global_total_debts += inst['amount']
 
-    # Arka Plana Sessizce Bugünün Snapshot'ını Gönder
     requests.post(f"{API_URL}/portfolio/snapshot", json={
         "total_assets": global_total_assets,
         "total_debts": global_total_debts
     }, timeout=2)
 except:
-    pass # Frontend akışını kesintiye uğratmamak için hataları yutuyoruz
-
+    pass 
 
 # --- TABS ---
 tab_portfoy, tab_borc, tab_trend = st.tabs(["📊 Portföy Özeti", "💳 Borç Takibi", "📈 Trend Analizi"])
@@ -289,38 +286,59 @@ with tab_borc:
         render_auto_debt_form("auto_debt_form_initial")
 
 # =====================================================================
-# 3. TAB: TREND ANALİZİ
+# 3. TAB: TREND ANALİZİ (YENİ INVESTING.COM STİLİ)
 # =====================================================================
 with tab_trend:
-    st.header("📈 Tarihsel Varlık ve Borç Trendi")
+    st.header("📈 Varlık Büyüme Trendi")
     
     try:
         res_hist = requests.get(f"{API_URL}/portfolio/history", timeout=5)
         if res_hist.status_code == 200 and res_hist.json():
             df_hist = pd.DataFrame(res_hist.json())
             
-            # DataFrame'i grafiğe hazırlıyoruz
             df_hist['record_date'] = pd.to_datetime(df_hist['record_date'])
-            df_hist.set_index('record_date', inplace=True)
-            df_hist.rename(columns={
-                'total_assets': 'Toplam Varlık (₺)', 
-                'total_debts': 'Toplam Borç (₺)', 
-                'net_worth': 'Net Servet (₺)'
-            }, inplace=True)
+            df_hist.sort_values('record_date', inplace=True)
             
-            # Metrik Kartları
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric(label="Güncel Toplam Varlık", value=f"₺ {global_total_assets:,.2f}")
-            with col2:
-                st.metric(label="Güncel Toplam Borç", value=f"₺ {global_total_debts:,.2f}")
-            with col3:
-                st.metric(label="Güncel Net Servet", value=f"₺ {global_total_assets - global_total_debts:,.2f}")
-                
+            st.metric(label="Güncel Toplam Varlık", value=f"₺ {global_total_assets:,.2f}")
             st.write("---")
             
-            # Çizgi Grafiği (Streamlit otomatik renk ve legend atar)
-            st.area_chart(df_hist[['Toplam Varlık (₺)', 'Toplam Borç (₺)', 'Net Servet (₺)']])
+            # --- YENİ PROFESYONEL PLOTLY GRAFİĞİ ---
+            fig = go.Figure()
+
+            fig.add_trace(go.Scatter(
+                x=df_hist['record_date'],
+                y=df_hist['total_assets'],
+                fill='tozeroy',
+                mode='lines',
+                line=dict(color='#2962FF', width=3), # Finansal Lacivert/Mavi tonu
+                fillcolor='rgba(41, 98, 255, 0.15)',
+                name='Toplam Varlık',
+                hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Varlık:</b> ₺%{y:,.2f}<extra></extra>'
+            ))
+
+            fig.update_layout(
+                margin=dict(l=0, r=0, t=20, b=0),
+                hovermode='x unified', # İmleç ile hareket eden dikey çizgi
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(
+                    showgrid=True,
+                    gridcolor='rgba(128, 128, 128, 0.15)',
+                    tickformat='%d %b'
+                ),
+                yaxis=dict(
+                    showgrid=True,
+                    gridcolor='rgba(128, 128, 128, 0.15)',
+                    tickprefix="₺",
+                    separators=".,"
+                )
+            )
+
+            # Eksen çizgileri ve crosshair (Investing tarzı kesişen imleç çizgileri)
+            fig.update_xaxes(showspikes=True, spikecolor="gray", spikesnap="cursor", spikemode="across")
+            fig.update_yaxes(showspikes=True, spikecolor="gray", spikethickness=1)
+
+            st.plotly_chart(fig, use_container_width=True)
             
             st.caption("Veriler, sisteme giriş yaptığınız veya 'Piyasa Fiyatlarını Güncelle' butonuna bastığınız günlerin kapanış değerlerini baz alır.")
         else:
