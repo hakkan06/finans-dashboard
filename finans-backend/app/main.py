@@ -8,7 +8,6 @@ import calendar
 from . import models, schemas
 from .database import engine, get_db
 
-# --- YENİ EKLENEN: İŞLETİM SİSTEMİNDEN BAĞIMSIZ SABİT TÜRKİYE SAATİ (UTC+3) ---
 TR_TZ = timezone(timedelta(hours=3))
 
 models.Base.metadata.create_all(bind=engine)
@@ -41,7 +40,6 @@ def run_daily_job(db: Session = Depends(get_db)):
             if not inst.is_paid:
                 total_debts += inst.amount
                 
-    # Gece yarısı kaydını atarken yerel tarihi baz alıyoruz
     today = datetime.now(TR_TZ).date()
     record = db.query(models.PortfolioHistory).filter(models.PortfolioHistory.record_date == today).first()
     net = total_assets - total_debts
@@ -172,12 +170,23 @@ def update_asset_prices(db: Session = Depends(get_db)):
                 hist = yf.Ticker(asset.symbol).history(period="5d")
                 if not hist.empty:
                     asset.current_price = float(hist["Close"].iloc[-1])
-                    # Kod seviyesinde zamanı Türkiye'ye sabitliyoruz
+                    asset.last_updated = datetime.now(TR_TZ)
+                    updated_count += 1
+            
+            # --- YENİ EKLENEN TR_STOCK BLOĞU (BORSA İSTANBUL) ---
+            elif asset.asset_type == "TR_STOCK":
+                # Sembolün sonuna '.IS' eklenmemişse otomatik ekle
+                bist_symbol = asset.symbol.upper()
+                if not bist_symbol.endswith(".IS"):
+                    bist_symbol += ".IS"
+                    
+                hist = yf.Ticker(bist_symbol).history(period="5d")
+                if not hist.empty:
+                    asset.current_price = float(hist["Close"].iloc[-1])
                     asset.last_updated = datetime.now(TR_TZ)
                     updated_count += 1
                     
             elif asset.asset_type == "FUND":
-                # Tefas tarihçesi de TR saati baz alınarak hesaplanıyor
                 end_date = datetime.now(TR_TZ)
                 start_date = end_date - timedelta(days=5)
                 data = crawler.fetch(start=start_date.strftime("%Y-%m-%d"),
