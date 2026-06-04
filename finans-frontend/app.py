@@ -286,11 +286,51 @@ with tab_borc:
         render_auto_debt_form("auto_debt_form_initial")
 
 # =====================================================================
-# 3. TAB: TREND ANALİZİ (YENİ INVESTING.COM STİLİ)
+# 3. TAB: TREND ANALİZİ (YENİ INVESTING.COM STİLİ + VARLIK PROJEKSİYONU)
 # =====================================================================
 with tab_trend:
-    st.header("📈 Varlık Büyüme Trendi")
+    st.header("📈 Varlık Büyüme Trendi ve Dönem Sonu Projeksiyonu")
     
+    # --- YENİ: STRATEJİK PORTFÖY / BORÇ HESAPLAMASI ---
+    today_date = date.today()
+    current_month = today_date.month
+    current_year = today_date.year
+    
+    bu_ayki_borc = 0.0
+    for d in debts:
+        for inst in d.get('installments', []):
+            due_date_obj = pd.to_datetime(inst['due_date']).date()
+            if not inst['is_paid'] and due_date_obj.month == current_month and due_date_obj.year == current_year:
+                bu_ayki_borc += inst['amount']
+                
+    # Kullanıcı stratejisi: Nakit aranmaz, tüm varlıklar teminattır. Toplam varlıktan borç düşülür.
+    ay_sonu_kalan_varlik = global_total_assets - bu_ayki_borc
+    
+    # Projeksiyon UI Gösterimi
+    st.subheader("🗓️ Bu Ay Sonu Varlık Projeksiyonu")
+    col_n1, col_n2, col_n3 = st.columns(3)
+    
+    with col_n1:
+        st.metric(label="Mevcut Toplam Varlık", value=f"₺ {global_total_assets:,.2f}")
+    with col_n2:
+        st.metric(label="Bu Ay Kapanacak Taksitler", value=f"₺ {bu_ayki_borc:,.2f}", delta="-Likidasyon İhtiyacı", delta_color="inverse")
+    with col_n3:
+        if ay_sonu_kalan_varlik >= 0:
+            st.metric(label="Ay Sonu Beklenen Net Varlık", value=f"₺ {ay_sonu_kalan_varlik:,.2f}", delta="Artıda", delta_color="normal")
+        else:
+            st.metric(label="Ay Sonu Beklenen Net Varlık", value=f"₺ {ay_sonu_kalan_varlik:,.2f}", delta="Ekside", delta_color="inverse")
+            
+    if ay_sonu_kalan_varlik < 0:
+        st.error(f"⚠️ **Kritik Uyarı:** Bu ayki taksit yükünüz, elinizdeki tüm varlıkların toplamını aşıyor. Ayı kapatmak için **₺ {abs(ay_sonu_kalan_varlik):,.2f}** tutarında dışarıdan ek kaynağa ihtiyacınız olacak.")
+    elif bu_ayki_borc > 0:
+        st.info(f"💡 **Strateji Notu:** Bu ayki ödemeleriniz için fonlardan, hisse senetlerinden veya altından yaklaşık **₺ {bu_ayki_borc:,.2f}** tutarında bir likidasyon (satış) yapmanız planlanmalıdır. Gerekli satışlar yapıldıktan sonra yatırımlarınızın toplam değeri **₺ {ay_sonu_kalan_varlik:,.2f}** seviyesine güncellenecektir.")
+    else:
+        st.success("✅ **Güvendesiniz:** Bu ay ödenmesi gereken herhangi bir borç taksiti bulunmuyor. Tüm yatırımlarınız büyüklüğünü korumaya devam edecek.")
+
+    st.write("---")
+    st.subheader("📊 Tarihsel Varlık Grafiği")
+    
+    # --- PLOTLY GRAFİĞİ ---
     try:
         res_hist = requests.get(f"{API_URL}/portfolio/history", timeout=5)
         if res_hist.status_code == 200 and res_hist.json():
@@ -299,10 +339,6 @@ with tab_trend:
             df_hist['record_date'] = pd.to_datetime(df_hist['record_date'])
             df_hist.sort_values('record_date', inplace=True)
             
-            st.metric(label="Güncel Toplam Varlık", value=f"₺ {global_total_assets:,.2f}")
-            st.write("---")
-            
-            # --- YENİ PROFESYONEL PLOTLY GRAFİĞİ ---
             fig = go.Figure()
 
             fig.add_trace(go.Scatter(
@@ -317,7 +353,7 @@ with tab_trend:
             ))
 
             fig.update_layout(
-                separators=".,", # <-- DÜZELTİLEN YER: Ayraçlar artık Layout seviyesinde
+                separators=".,",
                 margin=dict(l=0, r=0, t=20, b=0),
                 hovermode='x unified',
                 plot_bgcolor='rgba(0,0,0,0)',
@@ -331,7 +367,6 @@ with tab_trend:
                     showgrid=True,
                     gridcolor='rgba(128, 128, 128, 0.15)',
                     tickprefix="₺"
-                    # separators parametresi buradan kaldırıldı
                 )
             )
 
@@ -344,6 +379,5 @@ with tab_trend:
         else:
             st.info("Henüz grafik çizecek kadar tarihsel veri birikmedi. (Grafik yarına veya fiyat güncellediğinizde oluşacaktır).")
             
-    # Eğer başka bir kodlama veya bağlantı hatası olursa artık bize tam yerini söyleyecek
     except Exception as e:
         st.error(f"Grafik yüklenirken bir sorun oluştu. Hata Detayı: {repr(e)}")
