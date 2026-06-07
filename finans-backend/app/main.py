@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 import yfinance as yf
 from tefas import Crawler
 from datetime import datetime, timedelta, date, timezone
+from dateutil.relativedelta import relativedelta
 import calendar
 
 from . import models, schemas
@@ -289,14 +290,8 @@ def create_debt_schedule(schedule: schemas.DebtScheduleCreate, db: Session = Dep
     installment_amount = round(schedule.total_amount / schedule.installments_count, 2)
     
     for i in range(schedule.installments_count):
-        month = schedule.start_date.month - 1 + i
-        year = schedule.start_date.year + month // 12
-        month = month % 12 + 1
+        due_date = schedule.start_date + relativedelta(months=i)
         
-        last_day_of_month = calendar.monthrange(year, month)[1]
-        day = min(schedule.start_date.day, last_day_of_month)
-        
-        # Son taksit yuvarlama farkını kapatır
         if i == schedule.installments_count - 1:
             already_paid = installment_amount * (schedule.installments_count - 1)
             amount = round(schedule.total_amount - already_paid, 2)
@@ -306,7 +301,7 @@ def create_debt_schedule(schedule: schemas.DebtScheduleCreate, db: Session = Dep
         new_inst = models.DebtInstallment(
             debt_id=new_debt.id,
             amount=amount,
-            due_date=date(year, month, day),
+            due_date=due_date,
             is_paid=False
         )
         db.add(new_inst)
