@@ -111,10 +111,37 @@ tab_portfoy, tab_borc, tab_trend = st.tabs(["📊 Portföy Özeti", borc_tab_lab
 # =====================================================================
 with tab_portfoy:
     col1, col2 = st.columns([3, 1])
-    with col1:
+        with col1:
         st.header("Varlık Portföyü ve Canlı Değerler")
         st.caption(f"💱 Sistemde Kullanılan Güncel Dolar Kuru (Önbellekli): ₺ {usd_try_rate:,.2f}")
-    with col2:
+    
+        # Son fiyat güncelleme zamanını hesapla
+        son_guncelleme = None
+        for item in summary_data:
+            if item['last_updated']:
+               guncelleme_zamani = pd.to_datetime(item['last_updated'])
+               if son_guncelleme is None or guncelleme_zamani > son_guncelleme:
+                   son_guncelleme = guncelleme_zamani
+
+        if son_guncelleme:
+            simdi = pd.Timestamp.now(tz='Europe/Istanbul')
+            if son_guncelleme.tzinfo is None:
+                son_guncelleme = son_guncelleme.tz_localize('Europe/Istanbul')
+            fark = simdi - son_guncelleme
+            fark_dakika = int(fark.total_seconds() / 60)
+        
+            if fark_dakika < 1:
+             fark_str = "az önce"
+         elif fark_dakika < 60:
+              fark_str = f"{fark_dakika} dakika önce"
+         else:
+             fark_saat = fark_dakika // 60
+             fark_str = f"{fark_saat} saat önce"
+            
+          st.caption(f"🕐 Son fiyat güncellemesi: {son_guncelleme.strftime('%H:%M')} — {fark_str}")
+        else:
+        st.caption("🕐 Henüz fiyat güncellenmedi")
+        with col2:
         if st.button("🔄 Piyasa Fiyatlarını Güncelle", use_container_width=True):
             with st.spinner("Piyasalar taranıyor..."):
             res = requests.post(f"{API_URL}/assets/update-prices")
