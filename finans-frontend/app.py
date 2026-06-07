@@ -332,8 +332,39 @@ with tab_borc:
             df_inst = df_inst.sort_values(by="Son Ödeme Tarihi", ascending=True)
             display_df = df_inst[["Borç Adı", "Tutar", "Son Ödeme Tarihi", "Durum / Kalan"]]
 
-            st.subheader("📅 Ödeme Planı Takvimi (Tarihe Göre Sıralı)")
-            st.dataframe(display_df.style.format({"Tutar": "₺ {:,.2f}"}), use_container_width=True)
+st.subheader("📅 Ödeme Planı Takvimi (Tarihe Göre Sıralı)")
+
+            # Filtreler
+            fil_col1, fil_col2 = st.columns([1, 2])
+            with fil_col1:
+                durum_filtre = st.selectbox(
+                    "Durum",
+                    ["Tümü", "Sadece Ödenmemiş", "Sadece Gecikmiş", "Sadece Ödenenler"],
+                    key="durum_filtre"
+                )
+            with fil_col2:
+                borc_isimleri = ["Tümü"] + sorted(list(set(i["Borç Adı"] for i in installments_data)))
+                borc_filtre = st.selectbox("Borç Adı", borc_isimleri, key="borc_filtre")
+
+            filtrelenmis = installments_data.copy()
+
+            if durum_filtre == "Sadece Ödenmemiş":
+                filtrelenmis = [i for i in filtrelenmis if not i['is_paid']]
+            elif durum_filtre == "Sadece Gecikmiş":
+                filtrelenmis = [i for i in filtrelenmis if not i['is_paid'] and (pd.to_datetime(i['Son Ödeme Tarihi']).date() - date.today()).days < 0]
+            elif durum_filtre == "Sadece Ödenenler":
+                filtrelenmis = [i for i in filtrelenmis if i['is_paid']]
+
+            if borc_filtre != "Tümü":
+                filtrelenmis = [i for i in filtrelenmis if i['Borç Adı'] == borc_filtre]
+
+            if filtrelenmis:
+                df_filtre = pd.DataFrame(filtrelenmis)
+                df_filtre = df_filtre.sort_values(by="Son Ödeme Tarihi", ascending=True)
+                display_df = df_filtre[["Borç Adı", "Tutar", "Son Ödeme Tarihi", "Durum / Kalan"]]
+                st.dataframe(display_df.style.format({"Tutar": "₺ {:,.2f}"}), use_container_width=True)
+            else:
+                st.info("Seçilen filtreyle eşleşen kayıt bulunamadı.")
 
             st.write("---")
             colX, colY = st.columns(2)
