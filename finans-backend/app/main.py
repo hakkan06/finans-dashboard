@@ -165,8 +165,8 @@ def delete_asset(asset_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": f"{asset.symbol} başarıyla silindi."}
 
-@app.post("/assets/update-prices")
 @limiter.limit("1/minute")
+@app.post("/assets/update-prices")
 def update_asset_prices(db: Session = Depends(get_db)):
     assets = db.query(models.Asset).all()
     crawler = Crawler()
