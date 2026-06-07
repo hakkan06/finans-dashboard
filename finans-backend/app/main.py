@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 import yfinance as yf
 from tefas import Crawler
@@ -24,6 +24,7 @@ MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "")
 
 def send_mail(subject: str, body: str):
     if not MAIL_USER or not MAIL_PASSWORD:
+        print("Mail ayarları eksik. Mail gönderimi atlandı.")
         return
     try:
         msg = MIMEMultipart("alternative")
@@ -31,14 +32,19 @@ def send_mail(subject: str, body: str):
         msg["From"] = MAIL_USER
         msg["To"] = MAIL_USER
         msg.attach(MIMEText(body, "html"))
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        
+        # Kritik Düzeltme 1: timeout=10 eklendi. Ağ engellenirse sonsuza kadar beklemez, 10 saniye sonra hataya (except) düşer.
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
             server.login(MAIL_USER, MAIL_PASSWORD)
             server.sendmail(MAIL_USER, MAIL_USER, msg.as_string())
+            print("Arka plan görevi: Mail başarıyla gönderildi!")
+            
     except Exception as e:
-        print(f"Mail gönderilemedi: {e}")
+        print(f"Arka plan görevi başarısız: Mail gönderilemedi: {e}")
 
+# Kritik Düzeltme 2: Parametrelere 'background_tasks' eklendi
 @app.post("/system/daily-job")
-def run_daily_job(db: Session = Depends(get_db)):
+def run_daily_job(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     update_asset_prices(db)
     usd_try = 32.20
     try:
@@ -80,7 +86,8 @@ def run_daily_job(db: Session = Depends(get_db)):
         )
         db.add(new_record)
     db.commit()
-# Bugün vadesi gelen veya gecikmiş taksitleri bul
+
+    # Bugün vadesi gelen veya gecikmiş taksitleri bul
     bugun = datetime.now(TR_TZ).date()
     bildirim_satirlari = []
 
@@ -116,7 +123,9 @@ def run_daily_job(db: Session = Depends(get_db)):
         <p>Net Servet: <b>₺{net:,.2f}</b></p>
         </body></html>
         """
-        send_mail("🔔 Finans Dashboard — Borç Bildirimi", body)
+        # Kritik Düzeltme 3: Mail fonksiyonunu bloklayıcı şekilde çağırmak yerine kuyruğa ekliyoruz.
+        background_tasks.add_task(send_mail, "🔔 Finans Dashboard — Borç Bildirimi", body)
+        
     return {"message": "Gece otomasyonu tamamlandı", "net_worth": net}
 
 
