@@ -241,6 +241,38 @@ def update_asset_prices(db: Session = Depends(get_db)):
 
 @app.post("/transactions/", response_model=schemas.TransactionResponse)
 def create_transaction(txn: schemas.TransactionCreate, db: Session = Depends(get_db)):
+    # Satış işlemiyse mevcut lot kontrolü yap
+    if txn.quantity < 0:
+        txns = db.query(models.Transaction).filter(
+            models.Transaction.asset_id == txn.asset_id
+        ).order_by(models.Transaction.transaction_date).all()
+
+        buy_lots = []
+        for t in txns:
+            if t.quantity > 0:
+                buy_lots.append({'qty': t.quantity, 'price': t.unit_price})
+            elif t.quantity < 0:
+                sell_qty = abs(t.quantity)
+                for lot in buy_lots:
+                    if sell_qty <= 0:
+                        break
+                    if lot['qty'] >= sell_qty:
+                        lot['qty'] -= sell_qty
+                        sell_qty = 0
+                    else:
+                        sell_qty -= lot['qty']
+                        lot['qty'] = 0
+
+        available_qty = sum(lot['qty'] for lot in buy_lots)
+        requested_sell = abs(txn.quantity)
+
+        if requested_sell > available_qty:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Yetersiz lot: Satmaya çalıştığınız miktar ({requested_sell:.4f}) "
+                       f"eldeki miktarı ({available_qty:.4f}) aşıyor."
+            )
+
     db_txn = models.Transaction(**txn.dict())
     db.add(db_txn)
     db.commit()
