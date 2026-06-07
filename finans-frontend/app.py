@@ -82,8 +82,30 @@ except Exception as e:
     st.error(f"Beklenmedik hata: {repr(e)}")
 
 # --- TABS ---
-tab_portfoy, tab_borc, tab_trend = st.tabs(["📊 Portföy Özeti", "💳 Borç Takibi", "📈 Trend Analizi"])
+# Gecikmiş ve yaklaşan taksit kontrolü
+gecikmiş = []
+yaklasan = []
+bugun = date.today()
 
+for d in debts:
+    for inst in d.get('installments', []):
+        if not inst['is_paid']:
+            vade = pd.to_datetime(inst['due_date']).date()
+            kalan = (vade - bugun).days
+            if kalan < 0:
+                gecikmiş.append(f"{d['name']} — ₺{inst['amount']:,.2f} ({abs(kalan)} gün gecikmiş)")
+            elif kalan <= 3:
+                yaklasan.append(f"{d['name']} — ₺{inst['amount']:,.2f} ({kalan} gün kaldı)")
+
+if gecikmiş:
+    st.error("🔴 **Gecikmiş Taksitler:**\n" + "\n".join(f"- {g}" for g in gecikmiş))
+
+if yaklasan:
+    st.warning("⚠️ **Yaklaşan Taksitler (3 gün içinde):**\n" + "\n".join(f"- {y}" for y in yaklasan))
+
+# Tab isimlerini dinamik yap
+borc_tab_label = f"💳 Borç Takibi {'🔴' if gecikmiş else '⚠️' if yaklasan else ''}"
+tab_portfoy, tab_borc, tab_trend = st.tabs(["📊 Portföy Özeti", borc_tab_label, "📈 Trend Analizi"])
 # =====================================================================
 # 1. TAB: PORTFÖY ÖZETİ
 # =====================================================================
