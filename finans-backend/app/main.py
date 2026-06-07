@@ -7,6 +7,10 @@ from dateutil.relativedelta import relativedelta
 
 from . import models, schemas
 from .database import engine, get_db
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import os
 
 TR_TZ = timezone(timedelta(hours=3))
 
@@ -15,6 +19,23 @@ models.Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Finans API")
 
 _last_price_update = None
+MAIL_USER = os.getenv("MAIL_USER", "")
+MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "")
+
+def send_mail(subject: str, body: str):
+    if not MAIL_USER or not MAIL_PASSWORD:
+        return
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = MAIL_USER
+        msg["To"] = MAIL_USER
+        msg.attach(MIMEText(body, "html"))
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(MAIL_USER, MAIL_PASSWORD)
+            server.sendmail(MAIL_USER, MAIL_USER, msg.as_string())
+    except Exception as e:
+        print(f"Mail gönderilemedi: {e}")
 
 @app.post("/system/daily-job")
 def run_daily_job(db: Session = Depends(get_db)):
@@ -59,7 +80,43 @@ def run_daily_job(db: Session = Depends(get_db)):
         )
         db.add(new_record)
     db.commit()
+# Bugün vadesi gelen veya gecikmiş taksitleri bul
+    bugun = datetime.now(TR_TZ).date()
+    bildirim_satirlari = []
 
+    tum_borclar = db.query(models.Debt).all()
+    for d in tum_borclar:
+        for inst in d.installments:
+            if not inst.is_paid:
+                kalan = (inst.due_date - bugun).days
+                if kalan < 0:
+                    bildirim_satirlari.append(
+                        f"<tr style='color:#c0392b'><td>{d.name}</td><td>₺{inst.amount:,.2f}</td>"
+                        f"<td>{inst.due_date}</td><td>🔴 {abs(kalan)} gün gecikmiş</td></tr>"
+                    )
+                elif kalan <= 3:
+                    bildirim_satirlari.append(
+                        f"<tr style='color:#e67e22'><td>{d.name}</td><td>₺{inst.amount:,.2f}</td>"
+                        f"<td>{inst.due_date}</td><td>⚠️ {kalan} gün kaldı</td></tr>"
+                    )
+
+    if bildirim_satirlari:
+        tablo = "".join(bildirim_satirlari)
+        body = f"""
+        <html><body>
+        <h2>💰 Finans Dashboard — Günlük Borç Bildirimi</h2>
+        <p>Aşağıdaki taksitler için işlem yapmanız gerekiyor:</p>
+        <table border='1' cellpadding='8' cellspacing='0' style='border-collapse:collapse;width:100%'>
+            <tr style='background:#2962FF;color:white'>
+                <th>Borç Adı</th><th>Tutar</th><th>Vade Tarihi</th><th>Durum</th>
+            </tr>
+            {tablo}
+        </table>
+        <br>
+        <p>Net Servet: <b>₺{net:,.2f}</b></p>
+        </body></html>
+        """
+        send_mail("🔔 Finans Dashboard — Borç Bildirimi", body)
     return {"message": "Gece otomasyonu tamamlandı", "net_worth": net}
 
 

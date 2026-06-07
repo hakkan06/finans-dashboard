@@ -27,6 +27,16 @@ spec:
           # database.py dosyasında os.getenv("DB_HOST") yazmıştık.
           # K8s içindeki Postgres servisinin adını vererek iki container'ı bağlıyoruz:
           value: "finans-postgres-service"
+	- name: MAIL_USER
+	  valueFrom:
+	    secretKeyRef:
+	      name: finans-mail-secret
+	      key: mail_user
+        - name: MAIL_PASSWORD
+	  valueFrom:
+	    secretKeyRef:
+	      name: finans-mail-secret
+	      key: mail_password
 
 ---
 apiVersion: v1
