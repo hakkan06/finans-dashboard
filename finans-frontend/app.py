@@ -18,9 +18,10 @@ def get_cached_usd_rate():
         res.raise_for_status()
         return res.json().get("rates", {}).get("TRY", 32.20)
     except:
-        return 32.20 
+        return 32.20
 
 usd_try_rate = get_cached_usd_rate()
+
 
 def render_auto_debt_form(form_key):
     with st.form(form_key):
@@ -28,7 +29,7 @@ def render_auto_debt_form(form_key):
         d_total = st.number_input("Toplam Geri Ödeme Tutarı", min_value=0.01)
         d_count = st.number_input("Taksit Sayısı (Ay)", min_value=1, max_value=360, step=1, value=12)
         d_start = st.date_input("İlk Taksit Başlangıç Tarihi", value=date.today())
-        
+
         if st.form_submit_button("Ödeme Planını Otomatik Dağıt"):
             payload = {
                 "name": d_name,
@@ -39,13 +40,14 @@ def render_auto_debt_form(form_key):
             res = requests.post(f"{API_URL}/debts/schedules/", json=payload)
             if res.status_code == 200:
                 st.toast("✅ Kredi takvimi başarıyla üretildi!")
-                time.sleep(0.8) 
-                st.rerun() 
+                time.sleep(0.8)
+                st.rerun()
             else:
                 st.error("Plan dağıtılırken bir hata oluştu.")
 
+
 # =====================================================================
-# ÖN VERİ ÇEKİMİ VE SESSİZ SNAPSHOT (ZAMAN ÇİZELGESİ) KAYDI
+# ÖN VERİ ÇEKİMİ
 # =====================================================================
 global_total_assets = 0.0
 global_total_debts = 0.0
@@ -81,8 +83,9 @@ except requests.exceptions.Timeout:
 except Exception as e:
     st.error(f"Beklenmedik hata: {repr(e)}")
 
-# --- TABS ---
-# Gecikmiş ve yaklaşan taksit kontrolü
+# =====================================================================
+# GECİKMİŞ TAKSİT BANNER
+# =====================================================================
 gecikmiş = []
 yaklasan = []
 bugun = date.today()
@@ -103,25 +106,26 @@ if gecikmiş:
 if yaklasan:
     st.warning("⚠️ **Yaklaşan Taksitler (3 gün içinde):**\n" + "\n".join(f"- {y}" for y in yaklasan))
 
-# Tab isimlerini dinamik yap
 borc_tab_label = f"💳 Borç Takibi {'🔴' if gecikmiş else '⚠️' if yaklasan else ''}"
 tab_portfoy, tab_borc, tab_trend = st.tabs(["📊 Portföy Özeti", borc_tab_label, "📈 Trend Analizi"])
+
 # =====================================================================
 # 1. TAB: PORTFÖY ÖZETİ
 # =====================================================================
 with tab_portfoy:
     col1, col2 = st.columns([3, 1])
-        with col1:
+
+    with col1:
         st.header("Varlık Portföyü ve Canlı Değerler")
         st.caption(f"💱 Sistemde Kullanılan Güncel Dolar Kuru (Önbellekli): ₺ {usd_try_rate:,.2f}")
-    
+
         # Son fiyat güncelleme zamanını hesapla
         son_guncelleme = None
         for item in summary_data:
             if item['last_updated']:
-               guncelleme_zamani = pd.to_datetime(item['last_updated'])
-               if son_guncelleme is None or guncelleme_zamani > son_guncelleme:
-                   son_guncelleme = guncelleme_zamani
+                guncelleme_zamani = pd.to_datetime(item['last_updated'])
+                if son_guncelleme is None or guncelleme_zamani > son_guncelleme:
+                    son_guncelleme = guncelleme_zamani
 
         if son_guncelleme:
             simdi = pd.Timestamp.now(tz='Europe/Istanbul')
@@ -129,33 +133,33 @@ with tab_portfoy:
                 son_guncelleme = son_guncelleme.tz_localize('Europe/Istanbul')
             fark = simdi - son_guncelleme
             fark_dakika = int(fark.total_seconds() / 60)
-        
+
             if fark_dakika < 1:
-             fark_str = "az önce"
-         elif fark_dakika < 60:
-              fark_str = f"{fark_dakika} dakika önce"
-         else:
-             fark_saat = fark_dakika // 60
-             fark_str = f"{fark_saat} saat önce"
-            
-          st.caption(f"🕐 Son fiyat güncellemesi: {son_guncelleme.strftime('%H:%M')} — {fark_str}")
+                fark_str = "az önce"
+            elif fark_dakika < 60:
+                fark_str = f"{fark_dakika} dakika önce"
+            else:
+                fark_saat = fark_dakika // 60
+                fark_str = f"{fark_saat} saat önce"
+
+            st.caption(f"🕐 Son fiyat güncellemesi: {son_guncelleme.strftime('%H:%M')} — {fark_str}")
         else:
-        st.caption("🕐 Henüz fiyat güncellenmedi")
-        with col2:
+            st.caption("🕐 Henüz fiyat güncellenmedi")
+
+    with col2:
         if st.button("🔄 Piyasa Fiyatlarını Güncelle", use_container_width=True):
             with st.spinner("Piyasalar taranıyor..."):
-            res = requests.post(f"{API_URL}/assets/update-prices")
-            if res.status_code == 200:
-            # Fiyatlar güncellendikten sonra snapshot al
-                requests.post(f"{API_URL}/portfolio/snapshot", json={
-                "total_assets": global_total_assets,
-                "total_debts": global_total_debts
-                }, timeout=2)
-                st.toast("📈 Fiyatlar başarıyla güncellendi!")
-                time.sleep(0.8)
-                st.rerun()
-        else:
-            st.error("Veri çekilirken hata oluştu.")
+                res = requests.post(f"{API_URL}/assets/update-prices")
+                if res.status_code == 200:
+                    requests.post(f"{API_URL}/portfolio/snapshot", json={
+                        "total_assets": global_total_assets,
+                        "total_debts": global_total_debts
+                    }, timeout=2)
+                    st.toast("📈 Fiyatlar başarıyla güncellendi!")
+                    time.sleep(0.8)
+                    st.rerun()
+                else:
+                    st.error("Veri çekilirken hata oluştu.")
 
     if summary_data:
         portfolio_table = []
@@ -168,7 +172,7 @@ with tab_portfoy:
                 net_val_try = item['net_value']
                 total_tax_try = item['total_tax']
                 display_price = f"₺ {item['current_price']:,.2f}"
-                
+
             last_upd_str = str(item['last_updated'])[:16].replace("T", " ") if item['last_updated'] else "Güncellenmedi"
 
             portfolio_table.append({
@@ -181,25 +185,59 @@ with tab_portfoy:
                 "Net Toplam Değer (₺)": net_val_try,
                 "Son Güncelleme": last_upd_str
             })
-        
+
         df = pd.DataFrame(portfolio_table)
-        st.metric(label="Net Portföy Büyüklüğü (Vergi Sonrası)", value=f"₺ {global_total_assets:,.2f}")
+
+        # Varlık türüne göre dağılım pie chart
+        pie_data = {}
+        for item in summary_data:
+            asset_type = item['asset_type']
+            net_val = item['net_value']
+            if asset_type == 'US_STOCK':
+                net_val *= usd_try_rate
+            pie_data[asset_type] = pie_data.get(asset_type, 0) + net_val
+
+        col_pie, col_metric = st.columns([1, 1])
+
+        with col_pie:
+            if pie_data:
+                fig_pie = go.Figure(data=[go.Pie(
+                    labels=list(pie_data.keys()),
+                    values=list(pie_data.values()),
+                    hole=0.45,
+                    textinfo='label+percent',
+                    hovertemplate='<b>%{label}</b><br>₺%{value:,.2f}<br>%{percent}<extra></extra>',
+                    marker=dict(colors=['#2962FF', '#00BCD4', '#FF6F00', '#43A047', '#8E24AA'])
+                )])
+                fig_pie.update_layout(
+                    margin=dict(l=0, r=0, t=0, b=0),
+                    showlegend=False,
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    height=220
+                )
+                st.plotly_chart(fig_pie, use_container_width=True)
+
+        with col_metric:
+            st.metric(label="Net Portföy Büyüklüğü (Vergi Sonrası)", value=f"₺ {global_total_assets:,.2f}")
+
         st.dataframe(df.style.format({
             "Kesilen Stopaj (₺)": "{:,.2f}",
             "Net Toplam Değer (₺)": "{:,.2f}",
             "Miktar": "{:,.2f}"
         }), use_container_width=True)
+
     else:
         st.info("Sistemde henüz varlık bulunmuyor veya hesaplanamadı.")
-            
+
     st.divider()
-    
+
     st.subheader("⚙️ Varlık Yönetim ve İşlem Merkezi")
     islem_tipi = st.selectbox(
         "Yapmak İstediğiniz İşlemi Seçin:",
         ["Alım / Satım İşlemi Kaydet", "Sisteme Yeni Varlık Tanımla", "Varlığı Portföyden Kalıcı Olarak Kaldır"]
     )
-    
+
     if islem_tipi == "Alım / Satım İşlemi Kaydet":
         if summary_data:
             with st.form("unified_transaction_form"):
@@ -209,7 +247,7 @@ with tab_portfoy:
                 t_qty = st.number_input("Miktar (Lot / Adet / Nakit)", min_value=0.0001, format="%.4f")
                 t_price = st.number_input("Birim Maliyet / Alış Fiyatı (TL İçin 1.0 Girin)", min_value=0.01, format="%.2f")
                 t_date = st.date_input("İşlem Tarihi", value=date.today())
-                
+
                 if st.form_submit_button("İşlemi Cüzdana Kaydet"):
                     final_qty = float(t_qty) if islem_turu == "Alış (+)" else -float(t_qty)
                     res = requests.post(f"{API_URL}/transactions/", json={
@@ -222,6 +260,9 @@ with tab_portfoy:
                         st.toast(f"✅ {islem_turu} başarıyla işlendi!")
                         time.sleep(0.8)
                         st.rerun()
+                    else:
+                        hata = res.json().get("detail", "Bilinmeyen hata")
+                        st.error(f"İşlem başarısız: {hata}")
         else:
             st.warning("Lütfen önce yukarıdan 'Sisteme Yeni Varlık Tanımla' seçeneğini kullanın.")
 
@@ -261,12 +302,12 @@ with tab_borc:
     if debts:
         installments_data = []
         today = date.today()
-        
+
         for d in debts:
             for inst in d.get('installments', []):
                 due_date_obj = pd.to_datetime(inst['due_date']).date()
                 days_left = (due_date_obj - today).days
-                
+
                 if inst['is_paid']:
                     status_str = "✅ Ödendi"
                 else:
@@ -290,18 +331,19 @@ with tab_borc:
             df_inst = pd.DataFrame(installments_data)
             df_inst = df_inst.sort_values(by="Son Ödeme Tarihi", ascending=True)
             display_df = df_inst[["Borç Adı", "Tutar", "Son Ödeme Tarihi", "Durum / Kalan"]]
-            
+
             st.subheader("📅 Ödeme Planı Takvimi (Tarihe Göre Sıralı)")
             st.dataframe(display_df.style.format({"Tutar": "₺ {:,.2f}"}), use_container_width=True)
-            
+
             st.write("---")
             colX, colY = st.columns(2)
+
             with colX:
                 st.subheader("✅ Ödeme İşaretle")
                 with st.form("pay_installment_form"):
                     unpaid = [i for i in installments_data if not i['is_paid']]
                     unpaid = sorted(unpaid, key=lambda x: x['Son Ödeme Tarihi'])
-                    
+
                     if unpaid:
                         unpaid_opts = {f"{i['Borç Adı']} | Vade: {i['Son Ödeme Tarihi']} | ₺ {i['Tutar']}": i['id'] for i in unpaid}
                         selected_unpaid = st.selectbox("Ödenen Taksiti Seç", options=list(unpaid_opts.keys()))
@@ -315,14 +357,14 @@ with tab_borc:
                         st.info("Ödenmesi gereken aktif bir taksit bulunmuyor.")
         else:
             st.info("Ana borç kaydı var ancak alt ödeme takvimi oluşturulmamış.")
-            
+
         st.write("---")
         colA, colB = st.columns(2)
-        
+
         with colA:
             st.subheader("📝 Yeni Otomatik Ödeme Planı Oluştur")
-            render_auto_debt_form("auto_debt_form_main") 
-                        
+            render_auto_debt_form("auto_debt_form_main")
+
         with colB:
             st.subheader("🗑️ Borcu Tamamen Sil")
             with st.form("delete_debt_form"):
@@ -344,30 +386,27 @@ with tab_borc:
         render_auto_debt_form("auto_debt_form_initial")
 
 # =====================================================================
-# 3. TAB: TREND ANALİZİ (YENİ INVESTING.COM STİLİ + VARLIK PROJEKSİYONU)
+# 3. TAB: TREND ANALİZİ
 # =====================================================================
 with tab_trend:
     st.header("📈 Varlık Büyüme Trendi ve Dönem Sonu Projeksiyonu")
-    
-    # --- YENİ: STRATEJİK PORTFÖY / BORÇ HESAPLAMASI ---
+
     today_date = date.today()
     current_month = today_date.month
     current_year = today_date.year
-    
+
     bu_ayki_borc = 0.0
     for d in debts:
         for inst in d.get('installments', []):
             due_date_obj = pd.to_datetime(inst['due_date']).date()
             if not inst['is_paid'] and due_date_obj.month == current_month and due_date_obj.year == current_year:
                 bu_ayki_borc += inst['amount']
-                
-    # Kullanıcı stratejisi: Nakit aranmaz, tüm varlıklar teminattır. Toplam varlıktan borç düşülür.
+
     ay_sonu_kalan_varlik = global_total_assets - bu_ayki_borc
-    
-    # Projeksiyon UI Gösterimi
+
     st.subheader("🗓️ Bu Ay Sonu Varlık Projeksiyonu")
     col_n1, col_n2, col_n3 = st.columns(3)
-    
+
     with col_n1:
         st.metric(label="Mevcut Toplam Varlık", value=f"₺ {global_total_assets:,.2f}")
     with col_n2:
@@ -377,7 +416,7 @@ with tab_trend:
             st.metric(label="Ay Sonu Beklenen Net Varlık", value=f"₺ {ay_sonu_kalan_varlik:,.2f}", delta="Artıda", delta_color="normal")
         else:
             st.metric(label="Ay Sonu Beklenen Net Varlık", value=f"₺ {ay_sonu_kalan_varlik:,.2f}", delta="Ekside", delta_color="inverse")
-            
+
     if ay_sonu_kalan_varlik < 0:
         st.error(f"⚠️ **Kritik Uyarı:** Bu ayki taksit yükünüz, elinizdeki tüm varlıkların toplamını aşıyor. Ayı kapatmak için **₺ {abs(ay_sonu_kalan_varlik):,.2f}** tutarında dışarıdan ek kaynağa ihtiyacınız olacak.")
     elif bu_ayki_borc > 0:
@@ -387,16 +426,14 @@ with tab_trend:
 
     st.write("---")
     st.subheader("📊 Tarihsel Varlık Grafiği")
-    
-    # --- PLOTLY GRAFİĞİ ---
+
     try:
         res_hist = requests.get(f"{API_URL}/portfolio/history", timeout=5)
         if res_hist.status_code == 200 and res_hist.json():
             df_hist = pd.DataFrame(res_hist.json())
-            
             df_hist['record_date'] = pd.to_datetime(df_hist['record_date'])
             df_hist.sort_values('record_date', inplace=True)
-            
+
             fig = go.Figure()
 
             fig.add_trace(go.Scatter(
@@ -404,10 +441,28 @@ with tab_trend:
                 y=df_hist['total_assets'],
                 fill='tozeroy',
                 mode='lines',
-                line=dict(color='#2962FF', width=3), 
+                line=dict(color='#2962FF', width=3),
                 fillcolor='rgba(41, 98, 255, 0.15)',
                 name='Toplam Varlık',
                 hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Varlık:</b> ₺%{y:,.2f}<extra></extra>'
+            ))
+
+            fig.add_trace(go.Scatter(
+                x=df_hist['record_date'],
+                y=df_hist['total_debts'],
+                mode='lines',
+                line=dict(color='#E53935', width=2, dash='dot'),
+                name='Toplam Borç',
+                hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Borç:</b> ₺%{y:,.2f}<extra></extra>'
+            ))
+
+            fig.add_trace(go.Scatter(
+                x=df_hist['record_date'],
+                y=df_hist['net_worth'],
+                mode='lines',
+                line=dict(color='#43A047', width=2),
+                name='Net Servet',
+                hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Net Servet:</b> ₺%{y:,.2f}<extra></extra>'
             ))
 
             fig.update_layout(
@@ -416,6 +471,7 @@ with tab_trend:
                 hovermode='x unified',
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
+                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
                 xaxis=dict(
                     showgrid=True,
                     gridcolor='rgba(128, 128, 128, 0.15)',
@@ -432,10 +488,9 @@ with tab_trend:
             fig.update_yaxes(showspikes=True, spikecolor="gray", spikethickness=1)
 
             st.plotly_chart(fig, use_container_width=True)
-            
             st.caption("Veriler, sisteme giriş yaptığınız veya 'Piyasa Fiyatlarını Güncelle' butonuna bastığınız günlerin kapanış değerlerini baz alır.")
         else:
             st.info("Henüz grafik çizecek kadar tarihsel veri birikmedi. (Grafik yarına veya fiyat güncellediğinizde oluşacaktır).")
-            
+
     except Exception as e:
         st.error(f"Grafik yüklenirken bir sorun oluştu. Hata Detayı: {repr(e)}")
