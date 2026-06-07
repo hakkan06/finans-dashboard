@@ -1,0 +1,32 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Kodu çek
+        uses: actions/checkout@v4
+
+      - name: Backend imajını derle
+        run: |
+          cd finans-backend
+          docker build -t finans-backend:${{ github.sha }} -t finans-backend:latest .
+
+      - name: Frontend imajını derle
+        run: |
+          cd finans-frontend
+          docker build -t finans-frontend:${{ github.sha }} -t finans-frontend:latest .
+
+      - name: Kubernetes'e deploy et
+        run: |
+          kubectl set image deployment/finans-backend-deployment \
+            finans-backend=finans-backend:${{ github.sha }}
+          kubectl set image deployment/finans-frontend-deployment \
+            finans-frontend=finans-frontend:${{ github.sha }}
+          kubectl rollout status deployment/finans-backend-deployment
+          kubectl rollout status deployment/finans-frontend-deployment
