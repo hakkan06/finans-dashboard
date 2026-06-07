@@ -15,28 +15,24 @@ spec:
       containers:
       - name: finans-backend
         image: finans-backend:latest
-        env:
-        - name: TZ
-          value: "Europe/Istanbul"
-        # Docker Desktop'ın bilgisayarındaki lokal imajı bulabilmesi için bu satır kritik:
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
         env:
+        - name: TZ
+          value: "Europe/Istanbul"
         - name: DB_HOST
-          # database.py dosyasında os.getenv("DB_HOST") yazmıştık.
-          # K8s içindeki Postgres servisinin adını vererek iki container'ı bağlıyoruz:
           value: "finans-postgres-service"
-	- name: MAIL_USER
-	  valueFrom:
-	    secretKeyRef:
-	      name: finans-mail-secret
-	      key: mail_user
+        - name: MAIL_USER
+          valueFrom:
+            secretKeyRef:
+              name: finans-mail-secret
+              key: mail_user
         - name: MAIL_PASSWORD
-	  valueFrom:
-	    secretKeyRef:
-	      name: finans-mail-secret
-	      key: mail_password
+          valueFrom:
+            secretKeyRef:
+              name: finans-mail-secret
+              key: mail_password
 
 ---
 apiVersion: v1
