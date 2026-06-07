@@ -332,7 +332,7 @@ with tab_borc:
             df_inst = df_inst.sort_values(by="Son Ödeme Tarihi", ascending=True)
             display_df = df_inst[["Borç Adı", "Tutar", "Son Ödeme Tarihi", "Durum / Kalan"]]
 
-st.subheader("📅 Ödeme Planı Takvimi (Tarihe Göre Sıralı)")
+            st.subheader("📅 Ödeme Planı Takvimi (Tarihe Göre Sıralı)")
 
             # Filtreler
             fil_col1, fil_col2 = st.columns([1, 2])
