@@ -1,13 +1,9 @@
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 import yfinance as yf
 from tefas import Crawler
 from datetime import datetime, timedelta, date, timezone
 from dateutil.relativedelta import relativedelta
-import calendar
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
 
 from . import models, schemas
 from .database import engine, get_db
@@ -17,9 +13,8 @@ TR_TZ = timezone(timedelta(hours=3))
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Finans API")
-limiter = Limiter(key_func=get_remote_address)
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+_last_price_update = None
 
 @app.post("/system/daily-job")
 def run_daily_job(db: Session = Depends(get_db)):
@@ -31,7 +26,7 @@ def run_daily_job(db: Session = Depends(get_db)):
             usd_try = float(usd_hist["Close"].iloc[-1])
     except:
         pass
-        
+
     summary = get_portfolio_summary(db)
     total_assets = 0.0
     for item in summary:
@@ -39,18 +34,18 @@ def run_daily_job(db: Session = Depends(get_db)):
         if item["asset_type"] == "US_STOCK":
             val *= usd_try
         total_assets += val
-        
+
     total_debts = 0.0
     debts = db.query(models.Debt).all()
     for d in debts:
         for inst in d.installments:
             if not inst.is_paid:
                 total_debts += inst.amount
-                
+
     today = datetime.now(TR_TZ).date()
     record = db.query(models.PortfolioHistory).filter(models.PortfolioHistory.record_date == today).first()
     net = total_assets - total_debts
-    
+
     if record:
         record.total_assets = total_assets
         record.total_debts = total_debts
@@ -64,15 +59,16 @@ def run_daily_job(db: Session = Depends(get_db)):
         )
         db.add(new_record)
     db.commit()
-    
+
     return {"message": "Gece otomasyonu tamamlandı", "net_worth": net}
+
 
 @app.post("/portfolio/snapshot")
 def save_snapshot(snapshot: schemas.SnapshotCreate, db: Session = Depends(get_db)):
     today = datetime.now(TR_TZ).date()
     record = db.query(models.PortfolioHistory).filter(models.PortfolioHistory.record_date == today).first()
     net = snapshot.total_assets - snapshot.total_debts
-    
+
     if record:
         record.total_assets = snapshot.total_assets
         record.total_debts = snapshot.total_debts
@@ -88,6 +84,7 @@ def save_snapshot(snapshot: schemas.SnapshotCreate, db: Session = Depends(get_db
     db.commit()
     return {"message": "Snapshot kaydedildi."}
 
+
 @app.get("/portfolio/history", response_model=list[schemas.PortfolioHistoryResponse])
 def get_portfolio_history(db: Session = Depends(get_db)):
     return db.query(models.PortfolioHistory).order_by(models.PortfolioHistory.record_date).all()
@@ -98,7 +95,10 @@ def get_portfolio_summary(db: Session = Depends(get_db)):
     assets = db.query(models.Asset).all()
     summary = []
     for asset in assets:
-        txns = db.query(models.Transaction).filter(models.Transaction.asset_id == asset.id).order_by(models.Transaction.transaction_date).all()
+        txns = db.query(models.Transaction).filter(
+            models.Transaction.asset_id == asset.id
+        ).order_by(models.Transaction.transaction_date).all()
+
         buy_lots = []
         for t in txns:
             if t.quantity > 0:
@@ -106,7 +106,8 @@ def get_portfolio_summary(db: Session = Depends(get_db)):
             elif t.quantity < 0:
                 sell_qty = abs(t.quantity)
                 for lot in buy_lots:
-                    if sell_qty <= 0: break
+                    if sell_qty <= 0:
+                        break
                     if lot['qty'] > 0:
                         if lot['qty'] >= sell_qty:
                             lot['qty'] -= sell_qty
@@ -114,13 +115,13 @@ def get_portfolio_summary(db: Session = Depends(get_db)):
                         else:
                             sell_qty -= lot['qty']
                             lot['qty'] = 0
-                            
+
         total_qty = 0.0
         total_net_value = 0.0
         total_tax = 0.0
         curr_price = asset.current_price or 0.0
         is_fund = (asset.asset_type == "FUND")
-        
+
         for lot in buy_lots:
             if lot['qty'] > 0:
                 total_qty += lot['qty']
@@ -129,7 +130,7 @@ def get_portfolio_summary(db: Session = Depends(get_db)):
                 tax = (profit * 0.175) if (is_fund and profit > 0) else 0.0
                 total_tax += tax
                 total_net_value += (gross_val - tax)
-                
+
         summary.append({
             "asset_id": asset.id,
             "asset_type": asset.asset_type,
@@ -143,6 +144,7 @@ def get_portfolio_summary(db: Session = Depends(get_db)):
         })
     return summary
 
+
 @app.post("/assets/", response_model=schemas.AssetResponse)
 def create_asset(asset: schemas.AssetCreate, db: Session = Depends(get_db)):
     db_asset = models.Asset(**asset.dict())
@@ -151,9 +153,11 @@ def create_asset(asset: schemas.AssetCreate, db: Session = Depends(get_db)):
     db.refresh(db_asset)
     return db_asset
 
+
 @app.get("/assets/", response_model=list[schemas.AssetResponse])
 def read_assets(db: Session = Depends(get_db)):
     return db.query(models.Asset).all()
+
 
 @app.delete("/assets/{asset_id}")
 def delete_asset(asset_id: int, db: Session = Depends(get_db)):
@@ -165,13 +169,24 @@ def delete_asset(asset_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": f"{asset.symbol} başarıyla silindi."}
 
-@limiter.limit("1/minute")
+
 @app.post("/assets/update-prices")
 def update_asset_prices(db: Session = Depends(get_db)):
+    global _last_price_update
+    now = datetime.now(TR_TZ)
+
+    if _last_price_update and (now - _last_price_update).seconds < 60:
+        kalan = 60 - (now - _last_price_update).seconds
+        raise HTTPException(
+            status_code=429,
+            detail=f"Çok sık istek. {kalan} saniye sonra tekrar deneyin."
+        )
+
+    _last_price_update = now
     assets = db.query(models.Asset).all()
     crawler = Crawler()
     updated_count = 0
-    
+
     for asset in assets:
         try:
             if asset.asset_type == "US_STOCK":
@@ -180,26 +195,25 @@ def update_asset_prices(db: Session = Depends(get_db)):
                     asset.current_price = float(hist["Close"].iloc[-1])
                     asset.last_updated = datetime.now(TR_TZ)
                     updated_count += 1
-            
-            # --- YENİ EKLENEN TR_STOCK BLOĞU (BORSA İSTANBUL) ---
+
             elif asset.asset_type == "TR_STOCK":
-                # Sembolün sonuna '.IS' eklenmemişse otomatik ekle
                 bist_symbol = asset.symbol.upper()
                 if not bist_symbol.endswith(".IS"):
                     bist_symbol += ".IS"
-                    
                 hist = yf.Ticker(bist_symbol).history(period="5d")
                 if not hist.empty:
                     asset.current_price = float(hist["Close"].iloc[-1])
                     asset.last_updated = datetime.now(TR_TZ)
                     updated_count += 1
-                    
+
             elif asset.asset_type == "FUND":
                 end_date = datetime.now(TR_TZ)
                 start_date = end_date - timedelta(days=5)
-                data = crawler.fetch(start=start_date.strftime("%Y-%m-%d"),
-                                     end=end_date.strftime("%Y-%m-%d"),
-                                     name=asset.symbol)
+                data = crawler.fetch(
+                    start=start_date.strftime("%Y-%m-%d"),
+                    end=end_date.strftime("%Y-%m-%d"),
+                    name=asset.symbol
+                )
                 if not data.empty:
                     data = data.sort_values(by="date", ascending=False)
                     asset.current_price = float(data.iloc[0]['price'])
@@ -222,7 +236,7 @@ def update_asset_prices(db: Session = Depends(get_db)):
                             asset.current_price = (float(xag_hist["Close"].iloc[-1]) * usd_try) / 31.1034768
                             asset.last_updated = datetime.now(TR_TZ)
                             updated_count += 1
-                            
+
             elif asset.asset_type == "FIAT":
                 if asset.symbol.upper() in ["TRY", "TL"]:
                     asset.current_price = 1.0
@@ -241,15 +255,15 @@ def update_asset_prices(db: Session = Depends(get_db)):
                         asset.last_updated = datetime.now(TR_TZ)
                         updated_count += 1
 
-        except Exception as e:
+        except Exception:
             continue
-            
+
     db.commit()
     return {"message": f"{updated_count} adet varlığın fiyatı güncellendi."}
 
+
 @app.post("/transactions/", response_model=schemas.TransactionResponse)
 def create_transaction(txn: schemas.TransactionCreate, db: Session = Depends(get_db)):
-    # Satış işlemiyse mevcut lot kontrolü yap
     if txn.quantity < 0:
         txns = db.query(models.Transaction).filter(
             models.Transaction.asset_id == txn.asset_id
@@ -287,38 +301,20 @@ def create_transaction(txn: schemas.TransactionCreate, db: Session = Depends(get
     db.refresh(db_txn)
     return db_txn
 
-@app.post("/debts/schedules/")
-def create_debt_schedule(schedule: schemas.DebtScheduleCreate, db: Session = Depends(get_db)):
-    new_debt = models.Debt(name=schedule.name, total_amount=schedule.total_amount)
-    db.add(new_debt)
+
+@app.post("/debts/", response_model=schemas.DebtResponse)
+def create_debt(debt: schemas.DebtCreate, db: Session = Depends(get_db)):
+    db_debt = models.Debt(**debt.dict())
+    db.add(db_debt)
     db.commit()
-    db.refresh(new_debt)
-    
-    installment_amount = round(schedule.total_amount / schedule.installments_count, 2)
-    
-    for i in range(schedule.installments_count):
-        due_date = schedule.start_date + relativedelta(months=i)
-        
-        if i == schedule.installments_count - 1:
-            already_paid = installment_amount * (schedule.installments_count - 1)
-            amount = round(schedule.total_amount - already_paid, 2)
-        else:
-            amount = installment_amount
-        
-        new_inst = models.DebtInstallment(
-            debt_id=new_debt.id,
-            amount=amount,
-            due_date=due_date,
-            is_paid=False
-        )
-        db.add(new_inst)
-        
-    db.commit()
-    return {"message": f"{schedule.name} planı oluşturuldu."}
+    db.refresh(db_debt)
+    return db_debt
+
 
 @app.get("/debts/", response_model=list[schemas.DebtResponse])
 def read_debts(db: Session = Depends(get_db)):
     return db.query(models.Debt).all()
+
 
 @app.delete("/debts/{debt_id}")
 def delete_debt(debt_id: int, db: Session = Depends(get_db)):
@@ -327,6 +323,7 @@ def delete_debt(debt_id: int, db: Session = Depends(get_db)):
         db.delete(debt)
         db.commit()
     return {"message": "Silindi"}
+
 
 @app.put("/installments/{inst_id}/toggle")
 def toggle_installment(inst_id: int, db: Session = Depends(get_db)):
@@ -337,30 +334,32 @@ def toggle_installment(inst_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Durum güncellendi", "is_paid": inst.is_paid}
 
+
 @app.post("/debts/schedules/")
 def create_debt_schedule(schedule: schemas.DebtScheduleCreate, db: Session = Depends(get_db)):
     new_debt = models.Debt(name=schedule.name, total_amount=schedule.total_amount)
     db.add(new_debt)
     db.commit()
     db.refresh(new_debt)
-    
+
     installment_amount = round(schedule.total_amount / schedule.installments_count, 2)
-    
+
     for i in range(schedule.installments_count):
-        month = schedule.start_date.month - 1 + i
-        year = schedule.start_date.year + month // 12
-        month = month % 12 + 1
-        
-        last_day_of_month = calendar.monthrange(year, month)[1]
-        day = min(schedule.start_date.day, last_day_of_month)
-        
+        due_date = schedule.start_date + relativedelta(months=i)
+
+        if i == schedule.installments_count - 1:
+            already_paid = installment_amount * (schedule.installments_count - 1)
+            amount = round(schedule.total_amount - already_paid, 2)
+        else:
+            amount = installment_amount
+
         new_inst = models.DebtInstallment(
             debt_id=new_debt.id,
-            amount=installment_amount,
-            due_date=date(year, month, day),
+            amount=amount,
+            due_date=due_date,
             is_paid=False
         )
         db.add(new_inst)
-        
+
     db.commit()
     return {"message": f"{schedule.name} planı oluşturuldu."}
