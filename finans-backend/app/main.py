@@ -279,13 +279,40 @@ def create_transaction(txn: schemas.TransactionCreate, db: Session = Depends(get
     db.refresh(db_txn)
     return db_txn
 
-@app.post("/debts/", response_model=schemas.DebtResponse)
-def create_debt(debt: schemas.DebtCreate, db: Session = Depends(get_db)):
-    db_debt = models.Debt(**debt.dict())
-    db.add(db_debt)
+@app.post("/debts/schedules/")
+def create_debt_schedule(schedule: schemas.DebtScheduleCreate, db: Session = Depends(get_db)):
+    new_debt = models.Debt(name=schedule.name, total_amount=schedule.total_amount)
+    db.add(new_debt)
     db.commit()
-    db.refresh(db_debt)
-    return db_debt
+    db.refresh(new_debt)
+    
+    installment_amount = round(schedule.total_amount / schedule.installments_count, 2)
+    
+    for i in range(schedule.installments_count):
+        month = schedule.start_date.month - 1 + i
+        year = schedule.start_date.year + month // 12
+        month = month % 12 + 1
+        
+        last_day_of_month = calendar.monthrange(year, month)[1]
+        day = min(schedule.start_date.day, last_day_of_month)
+        
+        # Son taksit yuvarlama farkını kapatır
+        if i == schedule.installments_count - 1:
+            already_paid = installment_amount * (schedule.installments_count - 1)
+            amount = round(schedule.total_amount - already_paid, 2)
+        else:
+            amount = installment_amount
+        
+        new_inst = models.DebtInstallment(
+            debt_id=new_debt.id,
+            amount=amount,
+            due_date=date(year, month, day),
+            is_paid=False
+        )
+        db.add(new_inst)
+        
+    db.commit()
+    return {"message": f"{schedule.name} planı oluşturuldu."}
 
 @app.get("/debts/", response_model=list[schemas.DebtResponse])
 def read_debts(db: Session = Depends(get_db)):
