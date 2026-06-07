@@ -1,10 +1,13 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 import yfinance as yf
 from tefas import Crawler
 from datetime import datetime, timedelta, date, timezone
 from dateutil.relativedelta import relativedelta
 import calendar
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from . import models, schemas
 from .database import engine, get_db
@@ -14,6 +17,9 @@ TR_TZ = timezone(timedelta(hours=3))
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Finans API")
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @app.post("/system/daily-job")
 def run_daily_job(db: Session = Depends(get_db)):
@@ -160,6 +166,7 @@ def delete_asset(asset_id: int, db: Session = Depends(get_db)):
     return {"message": f"{asset.symbol} başarıyla silindi."}
 
 @app.post("/assets/update-prices")
+@limiter.limit("1/minute")
 def update_asset_prices(db: Session = Depends(get_db)):
     assets = db.query(models.Asset).all()
     crawler = Crawler()

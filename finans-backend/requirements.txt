@@ -5,3 +5,4 @@ psycopg2-binary
 yfinance
 tefas-crawler
 python-dateutil
+slowapi
