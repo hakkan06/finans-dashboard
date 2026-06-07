@@ -70,10 +70,7 @@ try:
                 if not inst['is_paid']:
                     global_total_debts += inst['amount']
 
-    requests.post(f"{API_URL}/portfolio/snapshot", json={
-        "total_assets": global_total_assets,
-        "total_debts": global_total_debts
-    }, timeout=2)
+
 except:
     pass 
 
@@ -91,13 +88,18 @@ with tab_portfoy:
     with col2:
         if st.button("🔄 Piyasa Fiyatlarını Güncelle", use_container_width=True):
             with st.spinner("Piyasalar taranıyor..."):
-                res = requests.post(f"{API_URL}/assets/update-prices")
-                if res.status_code == 200:
-                    st.toast("📈 Fiyatlar başarıyla güncellendi!")
-                    time.sleep(0.8)
-                    st.rerun()
-                else:
-                    st.error("Veri çekilirken hata oluştu.")
+            res = requests.post(f"{API_URL}/assets/update-prices")
+            if res.status_code == 200:
+            # Fiyatlar güncellendikten sonra snapshot al
+                requests.post(f"{API_URL}/portfolio/snapshot", json={
+                "total_assets": global_total_assets,
+                "total_debts": global_total_debts
+                }, timeout=2)
+                st.toast("📈 Fiyatlar başarıyla güncellendi!")
+                time.sleep(0.8)
+                st.rerun()
+        else:
+            st.error("Veri çekilirken hata oluştu.")
 
     if summary_data:
         portfolio_table = []
