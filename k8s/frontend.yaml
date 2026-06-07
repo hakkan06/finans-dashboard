@@ -15,13 +15,12 @@ spec:
       containers:
       - name: finans-frontend
         image: finans-frontend:latest
-        env:
+        imagePullPolicy: IfNotPresent
+	ports:
+	- containerPort: 8501	
+ 	env:
         - name: TZ
           value: "Europe/Istanbul"
-        imagePullPolicy: IfNotPresent
-        ports:
-        - containerPort: 8501
-        env:
         - name: API_URL
           # Frontend'in, Backend'e K8s iç ağından ulaşması için servis adını veriyoruz
           value: "http://finans-backend-service:8000"
