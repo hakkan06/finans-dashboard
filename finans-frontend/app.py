@@ -61,6 +61,8 @@ try:
             if item['asset_type'] == 'US_STOCK':
                 net_val *= usd_try_rate
             global_total_assets += net_val
+    else:
+        st.warning(f"Portföy verisi alınamadı. (HTTP {res_assets.status_code})")
 
     res_debts = requests.get(f"{API_URL}/debts/", timeout=5)
     if res_debts.status_code == 200:
@@ -69,10 +71,15 @@ try:
             for inst in d.get('installments', []):
                 if not inst['is_paid']:
                     global_total_debts += inst['amount']
+    else:
+        st.warning(f"Borç verisi alınamadı. (HTTP {res_debts.status_code})")
 
-
-except:
-    pass 
+except requests.exceptions.ConnectionError:
+    st.error("Backend'e bağlanılamıyor. Servis çalışıyor mu?")
+except requests.exceptions.Timeout:
+    st.error("Backend yanıt vermedi. Zaman aşımı.")
+except Exception as e:
+    st.error(f"Beklenmedik hata: {repr(e)}")
 
 # --- TABS ---
 tab_portfoy, tab_borc, tab_trend = st.tabs(["📊 Portföy Özeti", "💳 Borç Takibi", "📈 Trend Analizi"])
