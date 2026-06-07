@@ -284,7 +284,9 @@ with tab_portfoy:
                 del_asset_options = {f"{a['symbol']} - {a['name']}": a['asset_id'] for a in summary_data}
                 selected_del_asset = st.selectbox("Kaldırılacak Varlığı Seçin", options=list(del_asset_options.keys()))
                 st.warning("⚠️ Bu işlem seçilen varlığı VE geçmiş alım/satım kayıtlarını siler!")
-                if st.form_submit_button("Varlığı Kalıcı Olarak Yok Et"):
+                onay_varlik = st.checkbox("Evet, bu varlığı ve tüm geçmişini silmek istiyorum")
+                sil_btn = st.form_submit_button("Varlığı Kalıcı Olarak Yok Et", disabled=not onay_varlik)
+                if sil_btn and onay_varlik:
                     res = requests.delete(f"{API_URL}/assets/{del_asset_options[selected_del_asset]}")
                     if res.status_code == 200:
                         st.toast("🗑️ Varlık ve geçmişi silindi!")
@@ -403,7 +405,9 @@ with tab_borc:
                 if debt_opts:
                     selected_del_debt = st.selectbox("Kaldırılacak Borç Kalemi", options=list(debt_opts.keys()))
                     st.warning("⚠️ Bu borcu silerseniz, ona bağlı TÜM takvim silinecektir!")
-                    if st.form_submit_button("Borç Dosyasını Kapat ve Sil"):
+                    onay_borc = st.checkbox("Evet, bu borcu ve tüm taksit planını silmek istiyorum")
+                    sil_borc_btn = st.form_submit_button("Borç Dosyasını Kapat ve Sil", disabled=not onay_borc)
+                    if sil_borc_btn and onay_borc:
                         res = requests.delete(f"{API_URL}/debts/{debt_opts[selected_del_debt]}")
                         if res.status_code == 200:
                             st.toast("🗑️ Borç dosyası tamamen kaldırıldı!")
