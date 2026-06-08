@@ -266,14 +266,19 @@ def update_asset_prices(db: Session = Depends(get_db)):
                     updated_count += 1
 
             elif asset.asset_type == "TR_STOCK":
-                bist_symbol = asset.symbol.upper()
+                # .strip() ile yanlışlıkla girilen boşlukları temizliyoruz
+                bist_symbol = asset.symbol.strip().upper()
                 if not bist_symbol.endswith(".IS"):
                     bist_symbol += ".IS"
-                hist = yf.Ticker(bist_symbol).history(period="5d")
-                if not hist.empty:
-                    asset.current_price = float(hist["Close"].iloc[-1])
-                    asset.last_updated = datetime.now(TR_TZ)
-                    updated_count += 1
+                
+                # Tatilleri atlaması için 7 günlük veri çekip NaN olanları siliyoruz
+                hist = yf.Ticker(bist_symbol).history(period="7d")
+                if not hist.empty and "Close" in hist:
+                    valid_closes = hist["Close"].dropna()
+                    if not valid_closes.empty:
+                        asset.current_price = float(valid_closes.iloc[-1])
+                        asset.last_updated = datetime.now(TR_TZ)
+                        updated_count += 1
 
             elif asset.asset_type == "FUND":
                 end_date = datetime.now(TR_TZ)

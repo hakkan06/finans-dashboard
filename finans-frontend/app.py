@@ -14,11 +14,19 @@ st.title("💰 Varlık ve Borç Yönetim Paneli")
 @st.cache_data(ttl=3600)
 def get_cached_usd_rate():
     try:
-        res = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=3)
+        # 1. Deneme: Yahoo Finance Raw API (Backend ile birebir aynı kur verisi)
+        url = "https://query1.finance.yahoo.com/v8/finance/chart/TRY=X?interval=1d&range=1d"
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        res = requests.get(url, headers=headers, timeout=5)
         res.raise_for_status()
-        return res.json().get("rates", {}).get("TRY", 32.20)
+        return float(res.json()['chart']['result'][0]['meta']['regularMarketPrice'])
     except:
-        return 32.20
+        try:
+            # 2. Deneme: Yedek Ücretsiz API
+            res = requests.get("https://open.er-api.com/v6/latest/USD", timeout=3)
+            return float(res.json().get("rates", {}).get("TRY", 32.20))
+        except:
+            return 32.20
 
 usd_try_rate = get_cached_usd_rate()
 
