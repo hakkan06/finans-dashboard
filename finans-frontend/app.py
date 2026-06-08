@@ -195,7 +195,7 @@ if summary_data:
 
         df = pd.DataFrame(portfolio_table)
 
-# Varlık türüne göre dağılım pie chart
+        # Varlık türüne göre dağılım pie chart
         pie_data = {}
         for item in summary_data:
             asset_type = item.get('asset_type', 'BİLİNMEYEN')
@@ -234,19 +234,18 @@ if summary_data:
             "Net Toplam Değer (₺)": "{:,.2f}",
             "Miktar": "{:,.2f}"
         }), use_container_width=True)
-
-    else:
+else:
         st.info("Sistemde henüz varlık bulunmuyor veya hesaplanamadı.")
 
-    st.divider()
+        st.divider()
 
-    st.subheader("⚙️ Varlık Yönetim ve İşlem Merkezi")
-    islem_tipi = st.selectbox(
-        "Yapmak İstediğiniz İşlemi Seçin:",
-        ["Alım / Satım İşlemi Kaydet", "Sisteme Yeni Varlık Tanımla", "Varlığı Portföyden Kalıcı Olarak Kaldır"]
-    )
+        st.subheader("⚙️ Varlık Yönetim ve İşlem Merkezi")
+        islem_tipi = st.selectbox(
+            "Yapmak İstediğiniz İşlemi Seçin:",
+            ["Alım / Satım İşlemi Kaydet", "Sisteme Yeni Varlık Tanımla", "Varlığı Portföyden Kalıcı Olarak Kaldır"]
+        )
 
-    if islem_tipi == "Alım / Satım İşlemi Kaydet":
+if islem_tipi == "Alım / Satım İşlemi Kaydet":
         if summary_data:
             with st.form("unified_transaction_form"):
                 asset_options = {f"{a['symbol']} - {a['name']}": a['asset_id'] for a in summary_data}
@@ -274,7 +273,7 @@ if summary_data:
         else:
             st.warning("Lütfen önce yukarıdan 'Sisteme Yeni Varlık Tanımla' seçeneğini kullanın.")
 
-    elif islem_tipi == "Sisteme Yeni Varlık Tanımla":
+elif islem_tipi == "Sisteme Yeni Varlık Tanımla":
         with st.form("unified_add_asset_form"):
             a_type = st.selectbox("Varlık Sınıfı / Türü", ["US_STOCK", "TR_STOCK", "FUND", "COMMODITY", "FIAT"])
             a_sym = st.text_input("Sembol / Kod (Örn: QQQM, ALTIN, USD, EUR, TRY)")
@@ -286,7 +285,7 @@ if summary_data:
                     time.sleep(0.8)
                     st.rerun()
 
-    elif islem_tipi == "Varlığı Portföyden Kalıcı Olarak Kaldır":
+elif islem_tipi == "Varlığı Portföyden Kalıcı Olarak Kaldır":
         if summary_data:
             with st.form("unified_delete_asset_form"):
                 del_asset_options = {f"{a['symbol']} - {a['name']}": a['asset_id'] for a in summary_data}
