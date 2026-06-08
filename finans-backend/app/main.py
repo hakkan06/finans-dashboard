@@ -174,13 +174,12 @@ def get_portfolio_summary(db: Session = Depends(get_db)):
                 for lot in buy_lots:
                     if sell_qty <= 0:
                         break
-                    if lot['qty'] > 0:
-                        if lot['qty'] >= sell_qty:
-                            lot['qty'] -= sell_qty
-                            sell_qty = 0
-                        else:
-                            sell_qty -= lot['qty']
-                            lot['qty'] = 0
+                    if lot['qty'] >= sell_qty:
+                        lot['qty'] -= sell_qty
+                        sell_qty = 0
+                    else:
+                        sell_qty -= lot['qty']
+                        lot['qty'] = 0
 
         total_qty = 0.0
         total_net_value = 0.0
@@ -196,6 +195,10 @@ def get_portfolio_summary(db: Session = Depends(get_db)):
                 tax = (profit * 0.175) if (is_fund and profit > 0) else 0.0
                 total_tax += tax
                 total_net_value += (gross_val - tax)
+
+        # 🚀 YENİ EKLENEN MANTIK: Eğer eldeki miktar sıfırsa (veya küsurat hatası sınırındaysa), özete ekleme ve atla.
+        if total_qty <= 0.0001:
+            continue
 
         summary.append({
             "asset_id": asset.id,
