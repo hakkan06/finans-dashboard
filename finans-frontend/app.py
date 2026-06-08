@@ -22,7 +22,6 @@ def get_cached_usd_rate():
 
 usd_try_rate = get_cached_usd_rate()
 
-
 def render_auto_debt_form(form_key):
     with st.form(form_key):
         d_name = st.text_input("Kredi / Borç İsmi (Örn: Konut Kredisi)")
@@ -45,7 +44,6 @@ def render_auto_debt_form(form_key):
             else:
                 st.error("Plan dağıtılırken bir hata oluştu.")
 
-
 # =====================================================================
 # ÖN VERİ ÇEKİMİ
 # =====================================================================
@@ -59,9 +57,7 @@ try:
     if res_assets.status_code == 200:
         summary_data = res_assets.json()
         for item in summary_data:
-            # None gelirse 0.0 yap
             net_val = item.get('net_value') or 0.0
-            
             if item.get('asset_type') == 'US_STOCK':
                 net_val *= usd_try_rate
             global_total_assets += net_val
@@ -121,10 +117,9 @@ with tab_portfoy:
         st.header("Varlık Portföyü ve Canlı Değerler")
         st.caption(f"💱 Sistemde Kullanılan Güncel Dolar Kuru (Önbellekli): ₺ {usd_try_rate:,.2f}")
 
-        # Son fiyat güncelleme zamanını hesapla
         son_guncelleme = None
         for item in summary_data:
-            if item['last_updated']:
+            if item.get('last_updated'):
                 guncelleme_zamani = pd.to_datetime(item['last_updated'])
                 if son_guncelleme is None or guncelleme_zamani > son_guncelleme:
                     son_guncelleme = guncelleme_zamani
@@ -163,10 +158,9 @@ with tab_portfoy:
                 else:
                     st.error("Veri çekilirken hata oluştu.")
 
-if summary_data:
+    if summary_data:
         portfolio_table = []
         for item in summary_data:
-            # Gelen değerler None ise 0.0 kabul et
             curr_price = item.get('current_price') or 0.0
             net_val = item.get('net_value') or 0.0
             tax = item.get('total_tax') or 0.0
@@ -195,7 +189,6 @@ if summary_data:
 
         df = pd.DataFrame(portfolio_table)
 
-        # Varlık türüne göre dağılım pie chart
         pie_data = {}
         for item in summary_data:
             asset_type = item.get('asset_type', 'BİLİNMEYEN')
@@ -234,21 +227,22 @@ if summary_data:
             "Net Toplam Değer (₺)": "{:,.2f}",
             "Miktar": "{:,.2f}"
         }), use_container_width=True)
-else:
+
+    else:
         st.info("Sistemde henüz varlık bulunmuyor veya hesaplanamadı.")
 
-        st.divider()
+    st.divider()
 
-        st.subheader("⚙️ Varlık Yönetim ve İşlem Merkezi")
-        islem_tipi = st.selectbox(
-            "Yapmak İstediğiniz İşlemi Seçin:",
-            ["Alım / Satım İşlemi Kaydet", "Sisteme Yeni Varlık Tanımla", "Varlığı Portföyden Kalıcı Olarak Kaldır"]
-        )
+    st.subheader("⚙️ Varlık Yönetim ve İşlem Merkezi")
+    islem_tipi = st.selectbox(
+        "Yapmak İstediğiniz İşlemi Seçin:",
+        ["Alım / Satım İşlemi Kaydet", "Sisteme Yeni Varlık Tanımla", "Varlığı Portföyden Kalıcı Olarak Kaldır"]
+    )
 
-if islem_tipi == "Alım / Satım İşlemi Kaydet":
+    if islem_tipi == "Alım / Satım İşlemi Kaydet":
         if summary_data:
             with st.form("unified_transaction_form"):
-                asset_options = {f"{a['symbol']} - {a['name']}": a['asset_id'] for a in summary_data}
+                asset_options = {f"{a.get('symbol')} - {a.get('name')}": a.get('asset_id') for a in summary_data}
                 selected_asset = st.selectbox("İşlem Yapılacak Varlık", options=list(asset_options.keys()))
                 islem_turu = st.radio("İşlem Yönü", ["Alış (+)", "Satış (-)"], horizontal=True)
                 t_qty = st.number_input("Miktar (Lot / Adet / Nakit)", min_value=0.0001, format="%.4f")
@@ -273,7 +267,7 @@ if islem_tipi == "Alım / Satım İşlemi Kaydet":
         else:
             st.warning("Lütfen önce yukarıdan 'Sisteme Yeni Varlık Tanımla' seçeneğini kullanın.")
 
-elif islem_tipi == "Sisteme Yeni Varlık Tanımla":
+    elif islem_tipi == "Sisteme Yeni Varlık Tanımla":
         with st.form("unified_add_asset_form"):
             a_type = st.selectbox("Varlık Sınıfı / Türü", ["US_STOCK", "TR_STOCK", "FUND", "COMMODITY", "FIAT"])
             a_sym = st.text_input("Sembol / Kod (Örn: QQQM, ALTIN, USD, EUR, TRY)")
@@ -285,10 +279,10 @@ elif islem_tipi == "Sisteme Yeni Varlık Tanımla":
                     time.sleep(0.8)
                     st.rerun()
 
-elif islem_tipi == "Varlığı Portföyden Kalıcı Olarak Kaldır":
+    elif islem_tipi == "Varlığı Portföyden Kalıcı Olarak Kaldır":
         if summary_data:
             with st.form("unified_delete_asset_form"):
-                del_asset_options = {f"{a['symbol']} - {a['name']}": a['asset_id'] for a in summary_data}
+                del_asset_options = {f"{a.get('symbol')} - {a.get('name')}": a.get('asset_id') for a in summary_data}
                 selected_del_asset = st.selectbox("Kaldırılacak Varlığı Seçin", options=list(del_asset_options.keys()))
                 st.warning("⚠️ Bu işlem seçilen varlığı VE geçmiş alım/satım kayıtlarını siler!")
                 onay_varlik = st.checkbox("Evet, bu varlığı ve tüm geçmişini silmek istiyorum")
@@ -343,7 +337,6 @@ with tab_borc:
 
             st.subheader("📅 Ödeme Planı Takvimi (Tarihe Göre Sıralı)")
 
-            # Filtreler
             fil_col1, fil_col2 = st.columns([1, 2])
             with fil_col1:
                 durum_filtre = st.selectbox(

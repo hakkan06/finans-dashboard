@@ -6,7 +6,7 @@ metadata:
 spec:
   # TR Saati ile 23:59 (UTC 20:59)
   schedule: "59 20 * * *"
-  successfulJobsHistoryLimit: 3 # Geçmişteki başarılı 3 kaydı loglarda tutar
+  successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
@@ -18,10 +18,9 @@ spec:
             env:
             - name: TZ
               value: "Europe/Istanbul"
-            # Backend servisinin adı k8s yaml dosyasındaki service adına (finans-backend) göre düzenlenmiştir
             args:
             - -X
             - POST
-            - http://finans-backend:8000/system/daily-job
+            # DÜZELTİLEN YER: Servis adı 'finans-backend-service' olarak değiştirildi
+            - http://finans-backend-service:8000/system/daily-job
           restartPolicy: OnFailure
-
