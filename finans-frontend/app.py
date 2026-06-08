@@ -59,8 +59,10 @@ try:
     if res_assets.status_code == 200:
         summary_data = res_assets.json()
         for item in summary_data:
-            net_val = item['net_value']
-            if item['asset_type'] == 'US_STOCK':
+            # None gelirse 0.0 yap
+            net_val = item.get('net_value') or 0.0
+            
+            if item.get('asset_type') == 'US_STOCK':
                 net_val *= usd_try_rate
             global_total_assets += net_val
     else:
@@ -161,25 +163,30 @@ with tab_portfoy:
                 else:
                     st.error("Veri çekilirken hata oluştu.")
 
-    if summary_data:
+if summary_data:
         portfolio_table = []
         for item in summary_data:
-            if item['asset_type'] == 'US_STOCK':
-                net_val_try = item['net_value'] * usd_try_rate
-                total_tax_try = item['total_tax'] * usd_try_rate
-                display_price = f"$ {item['current_price']:,.2f}"
+            # Gelen değerler None ise 0.0 kabul et
+            curr_price = item.get('current_price') or 0.0
+            net_val = item.get('net_value') or 0.0
+            tax = item.get('total_tax') or 0.0
+            
+            if item.get('asset_type') == 'US_STOCK':
+                net_val_try = net_val * usd_try_rate
+                total_tax_try = tax * usd_try_rate
+                display_price = f"$ {curr_price:,.2f}"
             else:
-                net_val_try = item['net_value']
-                total_tax_try = item['total_tax']
-                display_price = f"₺ {item['current_price']:,.2f}"
+                net_val_try = net_val
+                total_tax_try = tax
+                display_price = f"₺ {curr_price:,.2f}"
 
-            last_upd_str = str(item['last_updated'])[:16].replace("T", " ") if item['last_updated'] else "Güncellenmedi"
+            last_upd_str = str(item.get('last_updated'))[:16].replace("T", " ") if item.get('last_updated') else "Güncellenmedi"
 
             portfolio_table.append({
-                "Tür": item['asset_type'],
-                "Sembol": item['symbol'],
-                "Ad": item['name'],
-                "Miktar": item['total_qty'],
+                "Tür": item.get('asset_type', 'Bilinmiyor'),
+                "Sembol": item.get('symbol', '-'),
+                "Ad": item.get('name', '-'),
+                "Miktar": item.get('total_qty') or 0.0,
                 "Anlık Fiyat": display_price,
                 "Kesilen Stopaj (₺)": total_tax_try,
                 "Net Toplam Değer (₺)": net_val_try,
@@ -188,11 +195,12 @@ with tab_portfoy:
 
         df = pd.DataFrame(portfolio_table)
 
-        # Varlık türüne göre dağılım pie chart
+# Varlık türüne göre dağılım pie chart
         pie_data = {}
         for item in summary_data:
-            asset_type = item['asset_type']
-            net_val = item['net_value']
+            asset_type = item.get('asset_type', 'BİLİNMEYEN')
+            net_val = item.get('net_value') or 0.0
+            
             if asset_type == 'US_STOCK':
                 net_val *= usd_try_rate
             pie_data[asset_type] = pie_data.get(asset_type, 0) + net_val
