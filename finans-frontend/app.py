@@ -136,7 +136,11 @@ with tab_portfoy:
         if son_guncelleme:
             simdi = pd.Timestamp.now(tz='Europe/Istanbul')
             if son_guncelleme.tzinfo is None:
-                son_guncelleme = son_guncelleme.tz_localize('Europe/Istanbul')
+                # Backend UTC kaydettiği için önce UTC olarak işaretleyip sonra Türkiye saatine çeviriyoruz.
+                son_guncelleme = son_guncelleme.tz_localize('UTC').tz_convert('Europe/Istanbul')
+            else:
+                son_guncelleme = son_guncelleme.tz_convert('Europe/Istanbul')
+                
             fark = simdi - son_guncelleme
             fark_dakika = int(fark.total_seconds() / 60)
 
