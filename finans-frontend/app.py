@@ -338,6 +338,7 @@ with tab_portfoy:
 with tab_borc:
     st.header("💳 Borç ve Ödeme Takip Paneli")
 
+    # --- 1. MEVCUT BORÇLARIN LİSTELENMESİ (ŞARTLI) ---
     if debts:
         installments_data = []
         today = date.today()
@@ -367,12 +368,9 @@ with tab_borc:
                 })
 
         if installments_data:
-            df_inst = pd.DataFrame(installments_data)
-            df_inst = df_inst.sort_values(by="Son Ödeme Tarihi", ascending=True)
-            display_df = df_inst[["Borç Adı", "Tutar", "Son Ödeme Tarihi", "Durum / Kalan"]]
-
             st.subheader("📅 Ödeme Planı Takvimi (Tarihe Göre Sıralı)")
 
+            # Filtreler
             fil_col1, fil_col2 = st.columns([1, 2])
             with fil_col1:
                 durum_filtre = st.selectbox(
@@ -405,59 +403,60 @@ with tab_borc:
                 st.info("Seçilen filtreyle eşleşen kayıt bulunamadı.")
 
             st.write("---")
-            colX, colY = st.columns(2)
+            
+            # Ödeme İşaretleme
+            st.subheader("✅ Ödeme İşaretle")
+            with st.form("pay_installment_form"):
+                unpaid = [i for i in installments_data if not i['is_paid']]
+                unpaid = sorted(unpaid, key=lambda x: x['Son Ödeme Tarihi'])
 
-            with colX:
-                st.subheader("✅ Ödeme İşaretle")
-                with st.form("pay_installment_form"):
-                    unpaid = [i for i in installments_data if not i['is_paid']]
-                    unpaid = sorted(unpaid, key=lambda x: x['Son Ödeme Tarihi'])
-
-                    if unpaid:
-                        unpaid_opts = {f"{i['Borç Adı']} | Vade: {i['Son Ödeme Tarihi']} | ₺ {i['Tutar']}": i['id'] for i in unpaid}
-                        selected_unpaid = st.selectbox("Ödenen Taksiti Seç", options=list(unpaid_opts.keys()))
-                        if st.form_submit_button("Ödendi Olarak İşaretle"):
-                            res = requests.put(f"{API_URL}/installments/{unpaid_opts[selected_unpaid]}/toggle")
-                            if res.status_code == 200:
-                                st.toast("✅ Ödeme başarıyla kayıtlara geçildi!")
-                                time.sleep(0.8)
-                                st.rerun()
-                    else:
-                        st.info("Ödenmesi gereken aktif bir taksit bulunmuyor.")
+                if unpaid:
+                    unpaid_opts = {f"{i['Borç Adı']} | Vade: {i['Son Ödeme Tarihi']} | ₺ {i['Tutar']}": i['id'] for i in unpaid}
+                    selected_unpaid = st.selectbox("Ödenen Taksiti Seç", options=list(unpaid_opts.keys()))
+                    if st.form_submit_button("Ödendi Olarak İşaretle"):
+                        res = requests.put(f"{API_URL}/installments/{unpaid_opts[selected_unpaid]}/toggle")
+                        if res.status_code == 200:
+                            st.toast("✅ Ödeme başarıyla kayıtlara geçildi!")
+                            time.sleep(0.8)
+                            st.rerun()
+                else:
+                    st.info("Ödenmesi gereken aktif bir taksit bulunmuyor.")
         else:
             st.info("Ana borç kaydı var ancak alt ödeme takvimi oluşturulmamış.")
-
-        st.write("---")
-        colA, colB = st.columns(2)
-
-        with colB:
-            st.subheader("🗑️ Borcu Tamamen Sil")
-            with st.form("delete_debt_form"):
-                debt_opts = {d['name']: d['id'] for d in debts}
-                if debt_opts:
-                    selected_del_debt = st.selectbox("Kaldırılacak Borç Kalemi", options=list(debt_opts.keys()))
-                    st.warning("⚠️ Bu borcu silerseniz, ona bağlı TÜM takvim silinecektir!")
-                    
-                    # Buton her zaman aktif. Tıklanınca kontrol edeceğiz.
-                    onay_borc = st.checkbox("Evet, bu borcu ve tüm taksit planını silmek istiyorum")
-                    sil_borc_btn = st.form_submit_button("Borç Dosyasını Kapat ve Sil")
-                    
-                    if sil_borc_btn:
-                        if onay_borc:
-                            res = requests.delete(f"{API_URL}/debts/{debt_opts[selected_del_debt]}")
-                            if res.status_code == 200:
-                                st.toast("🗑️ Borç dosyası tamamen kaldırıldı!")
-                                time.sleep(0.8)
-                                st.rerun()
-                        else:
-                            st.error("Lütfen silme işlemini onaylamak için yukarıdaki kutucuğu işaretleyin!")
-                else:
-                    st.info("Silinebilecek aktif borç dosyası bulunmuyor.")
     else:
-        st.info("Aktif borç kaydı bulunmuyor.")
-        st.subheader("📝 İlk Otomatik Ödeme Planını Oluştur")
-        render_auto_debt_form("auto_debt_form_initial")
+        st.info("Sistemde aktif herhangi bir borç kaydı bulunmuyor.")
 
+    # --- 2. YÖNETİM MERKEZİ (HER ZAMAN SABİT VE GÖRÜNÜR) ---
+    st.write("---")
+    st.subheader("⚙️ Borç Planlama ve Yönetim Merkezi")
+    colA, colB = st.columns(2)
+
+    with colA:
+        st.markdown("### 📝 Yeni Otomatik Ödeme Planı Oluştur")
+        render_auto_debt_form("auto_debt_form_main")
+
+    with colB:
+        st.markdown("### 🗑️ Borcu Tamamen Sil")
+        with st.form("delete_debt_form"):
+            debt_opts = {d['name']: d['id'] for d in debts}
+            if debt_opts:
+                selected_del_debt = st.selectbox("Kaldırılacak Borç Kalemi", options=list(debt_opts.keys()))
+                st.warning("⚠️ Bu borcu silerseniz, ona bağlı TÜM takvim silinecektir!")
+                
+                onay_borc = st.checkbox("Evet, bu borcu ve tüm taksit planını silmek istiyorum")
+                sil_borc_btn = st.form_submit_button("Borç Dosyasını Kapat ve Sil")
+                
+                if sil_borc_btn:
+                    if onay_borc:
+                        res = requests.delete(f"{API_URL}/debts/{debt_opts[selected_del_debt]}")
+                        if res.status_code == 200:
+                            st.toast("🗑️ Borç dosyası tamamen kaldırıldı!")
+                            time.sleep(0.8)
+                            st.rerun()
+                    else:
+                        st.error("Lütfen silme işlemini onaylamak için yukarıdaki kutucuğu işaretleyin!")
+            else:
+                st.info("Silinebilecek aktif borç dosyası bulunmuyor.")
 # =====================================================================
 # 3. TAB: TREND ANALİZİ
 # =====================================================================
