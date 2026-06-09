@@ -315,14 +315,20 @@ with tab_portfoy:
                 del_asset_options = {f"{a.get('symbol')} - {a.get('name')}": a.get('asset_id') for a in summary_data}
                 selected_del_asset = st.selectbox("Kaldırılacak Varlığı Seçin", options=list(del_asset_options.keys()))
                 st.warning("⚠️ Bu işlem seçilen varlığı VE geçmiş alım/satım kayıtlarını siler!")
+                
+                # Buton her zaman aktif. Tıklanınca kontrol edeceğiz.
                 onay_varlik = st.checkbox("Evet, bu varlığı ve tüm geçmişini silmek istiyorum")
-                sil_btn = st.form_submit_button("Varlığı Kalıcı Olarak Yok Et", disabled=not onay_varlik)
-                if sil_btn and onay_varlik:
-                    res = requests.delete(f"{API_URL}/assets/{del_asset_options[selected_del_asset]}")
-                    if res.status_code == 200:
-                        st.toast("🗑️ Varlık ve geçmişi silindi!")
-                        time.sleep(0.8)
-                        st.rerun()
+                sil_btn = st.form_submit_button("Varlığı Kalıcı Olarak Yok Et")
+                
+                if sil_btn:
+                    if onay_varlik:
+                        res = requests.delete(f"{API_URL}/assets/{del_asset_options[selected_del_asset]}")
+                        if res.status_code == 200:
+                            st.toast("🗑️ Varlık ve geçmişi silindi!")
+                            time.sleep(0.8)
+                            st.rerun()
+                    else:
+                        st.error("Lütfen işlemi onaylamak için yukarıdaki kutucuğu işaretleyin!")
         else:
             st.info("Sistemde silinebilecek varlık bulunmuyor.")
 
@@ -424,10 +430,6 @@ with tab_borc:
         st.write("---")
         colA, colB = st.columns(2)
 
-        with colA:
-            st.subheader("📝 Yeni Otomatik Ödeme Planı Oluştur")
-            render_auto_debt_form("auto_debt_form_main")
-
         with colB:
             st.subheader("🗑️ Borcu Tamamen Sil")
             with st.form("delete_debt_form"):
@@ -435,14 +437,20 @@ with tab_borc:
                 if debt_opts:
                     selected_del_debt = st.selectbox("Kaldırılacak Borç Kalemi", options=list(debt_opts.keys()))
                     st.warning("⚠️ Bu borcu silerseniz, ona bağlı TÜM takvim silinecektir!")
+                    
+                    # Buton her zaman aktif. Tıklanınca kontrol edeceğiz.
                     onay_borc = st.checkbox("Evet, bu borcu ve tüm taksit planını silmek istiyorum")
-                    sil_borc_btn = st.form_submit_button("Borç Dosyasını Kapat ve Sil", disabled=not onay_borc)
-                    if sil_borc_btn and onay_borc:
-                        res = requests.delete(f"{API_URL}/debts/{debt_opts[selected_del_debt]}")
-                        if res.status_code == 200:
-                            st.toast("🗑️ Borç dosyası tamamen kaldırıldı!")
-                            time.sleep(0.8)
-                            st.rerun()
+                    sil_borc_btn = st.form_submit_button("Borç Dosyasını Kapat ve Sil")
+                    
+                    if sil_borc_btn:
+                        if onay_borc:
+                            res = requests.delete(f"{API_URL}/debts/{debt_opts[selected_del_debt]}")
+                            if res.status_code == 200:
+                                st.toast("🗑️ Borç dosyası tamamen kaldırıldı!")
+                                time.sleep(0.8)
+                                st.rerun()
+                        else:
+                            st.error("Lütfen silme işlemini onaylamak için yukarıdaki kutucuğu işaretleyin!")
                 else:
                     st.info("Silinebilecek aktif borç dosyası bulunmuyor.")
     else:
