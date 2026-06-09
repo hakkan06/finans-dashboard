@@ -175,30 +175,27 @@ with tab_portfoy:
         portfolio_table = []
         for item in summary_data:
             net_val = item.get('net_value') or 0.0
-            total_cost = item.get('total_cost') or 0.0
             tax = item.get('total_tax') or 0.0
             curr_price = item.get('current_price') or 0.0
+            prev_price = item.get('previous_price')
             
             if item.get('asset_type') == 'US_STOCK':
                 net_val_try = net_val * usd_try_rate
-                total_tax_try = tax * usd_try_rate
-                total_cost_try = total_cost * usd_try_rate
                 display_price = f"$ {curr_price:,.2f}"
             else:
                 net_val_try = net_val
-                total_tax_try = tax
-                total_cost_try = total_cost
                 display_price = f"₺ {curr_price:,.2f}"
 
-            pnl_val = net_val_try - total_cost_try
-            if total_cost_try > 0.001:
-                pnl_pct = (pnl_val / total_cost_try) * 100
-                if pnl_val >= 0:
-                    pnl_str = f"🟢 +₺{pnl_val:,.2f} (+%{pnl_pct:,.2f})"
+            if prev_price and prev_price > 0:
+                daily_pct = ((curr_price - prev_price) / prev_price) * 100
+                if daily_pct > 0:
+                    change_str = f"🟢 +%{daily_pct:,.2f}"
+                elif daily_pct < 0:
+                    change_str = f"🔴 -%{abs(daily_pct):,.2f}"
                 else:
-                    pnl_str = f"🔴 -₺{abs(pnl_val):,.2f} (-%{abs(pnl_pct):,.2f})"
+                    change_str = "%0.00"
             else:
-                pnl_str = "-"
+                change_str = "-"
 
             if item.get('last_updated'):
                 dt = pd.to_datetime(item['last_updated'])
@@ -216,9 +213,8 @@ with tab_portfoy:
                 "Ad": item.get('name', '-'),
                 "Miktar": item.get('total_qty') or 0.0,
                 "Anlık Fiyat": display_price,
-                "Maliyet (₺)": total_cost_try,
+                "Günlük Değişim": change_str,
                 "Net Değer (₺)": net_val_try,
-                "Kâr / Zarar": pnl_str,
                 "Son Güncelleme": last_upd_str
             })
 
@@ -258,7 +254,6 @@ with tab_portfoy:
             st.metric(label="Net Portföy Büyüklüğü (Vergi Sonrası)", value=f"₺ {global_total_assets:,.2f}")
 
         st.dataframe(df.style.format({
-            "Maliyet (₺)": "{:,.2f}",
             "Net Değer (₺)": "{:,.2f}",
             "Miktar": "{:,.2f}"
         }), use_container_width=True)

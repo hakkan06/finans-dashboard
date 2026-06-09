@@ -11,6 +11,7 @@ class Asset(Base):
     symbol = Column(String, unique=True, index=True)
     name = Column(String)
     current_price = Column(Float, nullable=True)
+    previous_price = Column(Float, nullable=True)
     last_updated = Column(DateTime, nullable=True)
     
     transactions = relationship("Transaction", back_populates="asset")

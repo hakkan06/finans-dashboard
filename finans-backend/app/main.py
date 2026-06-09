@@ -210,6 +210,7 @@ def get_portfolio_summary(db: Session = Depends(get_db)):
             "name": asset.name,
             "total_qty": total_qty,
             "current_price": curr_price,
+            "previous_price": asset.previous_price,
             "total_cost": total_cost,
             "total_tax": total_tax,
             "net_value": total_net_value,
@@ -265,6 +266,8 @@ def update_asset_prices(db: Session = Depends(get_db)):
             if asset.asset_type == "US_STOCK":
                 hist = yf.Ticker(asset.symbol).history(period="5d")
                 if not hist.empty:
+                    if len(hist) > 1:
+                        asset.previous_price = float(hist["Close"].iloc[-2])
                     asset.current_price = float(hist["Close"].iloc[-1])
                     asset.last_updated = datetime.now(TR_TZ)
                     updated_count += 1
@@ -280,6 +283,8 @@ def update_asset_prices(db: Session = Depends(get_db)):
                 if not hist.empty and "Close" in hist:
                     valid_closes = hist["Close"].dropna()
                     if not valid_closes.empty:
+                        if len(valid_closes) > 1:
+                            asset.previous_price = float(valid_closes.iloc[-2])
                         asset.current_price = float(valid_closes.iloc[-1])
                         asset.last_updated = datetime.now(TR_TZ)
                         updated_count += 1
@@ -294,6 +299,8 @@ def update_asset_prices(db: Session = Depends(get_db)):
                 )
                 if not data.empty:
                     data = data.sort_values(by="date", ascending=False)
+                    if len(data) > 1:
+                        asset.previous_price = float(data.iloc[1]['price'])
                     asset.current_price = float(data.iloc[0]['price'])
                     asset.last_updated = datetime.now(TR_TZ)
                     updated_count += 1
@@ -305,30 +312,39 @@ def update_asset_prices(db: Session = Depends(get_db)):
                     if asset.symbol.upper() in ["ALTIN", "XAU", "GRAMALTIN"]:
                         xau_hist = yf.Ticker("GC=F").history(period="5d")
                         if not xau_hist.empty:
+                            if len(xau_hist) > 1 and len(usd_try_hist) > 1:
+                                asset.previous_price = (float(xau_hist["Close"].iloc[-2]) * float(usd_try_hist["Close"].iloc[-2])) / 31.1034768
                             asset.current_price = (float(xau_hist["Close"].iloc[-1]) * usd_try) / 31.1034768
                             asset.last_updated = datetime.now(TR_TZ)
                             updated_count += 1
                     elif asset.symbol.upper() in ["GUMUS", "XAG", "GRAMGUMUS"]:
                         xag_hist = yf.Ticker("SI=F").history(period="5d")
                         if not xag_hist.empty:
+                            if len(xag_hist) > 1 and len(usd_try_hist) > 1:
+                                asset.previous_price = (float(xag_hist["Close"].iloc[-2]) * float(usd_try_hist["Close"].iloc[-2])) / 31.1034768
                             asset.current_price = (float(xag_hist["Close"].iloc[-1]) * usd_try) / 31.1034768
                             asset.last_updated = datetime.now(TR_TZ)
                             updated_count += 1
 
             elif asset.asset_type == "FIAT":
                 if asset.symbol.upper() in ["TRY", "TL"]:
+                    asset.previous_price = 1.0
                     asset.current_price = 1.0
                     asset.last_updated = datetime.now(TR_TZ)
                     updated_count += 1
                 elif asset.symbol.upper() in ["USD", "DOLAR"]:
                     usd_hist = yf.Ticker("TRY=X").history(period="5d")
                     if not usd_hist.empty:
+                        if len(usd_hist) > 1:
+                            asset.previous_price = float(usd_hist["Close"].iloc[-2])
                         asset.current_price = float(usd_hist["Close"].iloc[-1])
                         asset.last_updated = datetime.now(TR_TZ)
                         updated_count += 1
                 elif asset.symbol.upper() in ["EUR", "EURO"]:
                     eur_hist = yf.Ticker("EURTRY=X").history(period="5d")
                     if not eur_hist.empty:
+                        if len(eur_hist) > 1:
+                            asset.previous_price = float(eur_hist["Close"].iloc[-2])
                         asset.current_price = float(eur_hist["Close"].iloc[-1])
                         asset.last_updated = datetime.now(TR_TZ)
                         updated_count += 1

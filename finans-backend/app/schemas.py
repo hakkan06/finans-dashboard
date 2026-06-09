@@ -27,6 +27,7 @@ class AssetCreate(AssetBase):
 class AssetResponse(AssetBase):
     id: int
     current_price: Optional[float] = None
+    previous_price: Optional[float] = None
     last_updated: Optional[datetime] = None
     class Config:
         from_attributes = True
@@ -38,6 +39,7 @@ class PortfolioItem(BaseModel):
     name: str
     total_qty: float
     current_price: float
+    previous_price: Optional[float] = None
     total_cost: float
     total_tax: float
     net_value: float
