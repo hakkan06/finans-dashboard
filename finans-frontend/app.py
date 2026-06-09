@@ -471,6 +471,12 @@ with tab_trend:
     st.write("---")
     st.subheader("📊 Tarihsel Varlık Grafiği")
 
+    gosterge_secimi = st.radio(
+        "Grafikte İncelenecek Veriyi Seçin:",
+        ["Net Servet", "Toplam Varlık", "Toplam Borç", "Tümünü Karşılaştır"],
+        horizontal=True
+    )
+
     try:
         res_hist = requests.get(f"{API_URL}/portfolio/history", timeout=5)
         if res_hist.status_code == 200 and res_hist.json():
@@ -478,105 +484,111 @@ with tab_trend:
             df_hist['record_date'] = pd.to_datetime(df_hist['record_date'])
             df_hist.sort_values('record_date', inplace=True)
 
-            # --- YENİ HESAPLAMALAR ---
-            # Günlük Değişim ve Yüzde (Net Servet üzerinden)
-            df_hist['prev_net_worth'] = df_hist['net_worth'].shift(1)
-            df_hist['daily_change'] = df_hist['net_worth'] - df_hist['prev_net_worth']
-            df_hist['daily_pct'] = (df_hist['daily_change'] / df_hist['prev_net_worth']) * 100
-            df_hist['daily_pct'] = df_hist['daily_pct'].fillna(0)
-            df_hist['daily_change'] = df_hist['daily_change'].fillna(0)
-            
-            # Bar chart renkleri: Kâr yeşil, zarar kırmızı
-            df_hist['change_color'] = df_hist['daily_change'].apply(lambda x: '#26A69A' if x >= 0 else '#EF5350')
-            
-            # 7 Günlük Basit Hareketli Ortalama (SMA)
-            df_hist['sma_7'] = df_hist['net_worth'].rolling(window=7, min_periods=1).mean()
-            # -------------------------
+            if gosterge_secimi != "Tümünü Karşılaştır":
+                if gosterge_secimi == "Net Servet":
+                    target_col = "net_worth"
+                    line_color = "#26A69A"
+                    fill_color = "rgba(38, 166, 154, 0.15)"
+                elif gosterge_secimi == "Toplam Varlık":
+                    target_col = "total_assets"
+                    line_color = "#2962FF"
+                    fill_color = "rgba(41, 98, 255, 0.15)"
+                else:
+                    target_col = "total_debts"
+                    line_color = "#EF5350"
+                    fill_color = "rgba(239, 83, 80, 0.15)"
 
-            fig = make_subplots(
-                rows=2, cols=1, 
-                shared_xaxes=True, 
-                vertical_spacing=0.03,
-                row_heights=[0.75, 0.25]
-            )
+                # Seçili gösterge için hesaplamalar
+                df_hist['prev_val'] = df_hist[target_col].shift(1)
+                df_hist['daily_change'] = df_hist[target_col] - df_hist['prev_val']
+                df_hist['daily_pct'] = (df_hist['daily_change'] / df_hist['prev_val']) * 100
+                df_hist['daily_pct'] = df_hist['daily_pct'].fillna(0)
+                df_hist['daily_change'] = df_hist['daily_change'].fillna(0)
+                
+                if target_col == "total_debts":
+                    # Borç artarsa kırmızı, azalırsa yeşil
+                    df_hist['change_color'] = df_hist['daily_change'].apply(lambda x: '#EF5350' if x > 0 else '#26A69A')
+                else:
+                    df_hist['change_color'] = df_hist['daily_change'].apply(lambda x: '#26A69A' if x >= 0 else '#EF5350')
+                
+                df_hist['sma_7'] = df_hist[target_col].rolling(window=7, min_periods=1).mean()
 
-            fig.add_trace(go.Scatter(
-                x=df_hist['record_date'],
-                y=df_hist['total_assets'],
-                fill='tozeroy',
-                mode='lines',
-                line=dict(color='#2962FF', width=2),
-                fillcolor='rgba(41, 98, 255, 0.1)',
-                name='Toplam Varlık',
-                hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Varlık:</b> ₺%{y:,.2f}<extra></extra>'
-            ), row=1, col=1)
+                fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
 
-            fig.add_trace(go.Scatter(
-                x=df_hist['record_date'],
-                y=df_hist['total_debts'],
-                mode='lines',
-                line=dict(color='#EF5350', width=2, dash='dot'),
-                name='Toplam Borç',
-                hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Borç:</b> ₺%{y:,.2f}<extra></extra>'
-            ), row=1, col=1)
+                fig.add_trace(go.Scatter(
+                    x=df_hist['record_date'], y=df_hist[target_col], mode='lines', fill='tozeroy', fillcolor=fill_color,
+                    line=dict(color=line_color, width=3), name=gosterge_secimi,
+                    hovertemplate=f'<b>Tarih:</b> %{{x|%d %b %Y}}<br><b>{gosterge_secimi}:</b> ₺%{{y:,.2f}}<br><b>Değişim:</b> ₺%{{customdata[0]:,.2f}} (%{{customdata[1]:.2f}}%)<extra></extra>',
+                    customdata=df_hist[['daily_change', 'daily_pct']]
+                ), row=1, col=1)
 
-            fig.add_trace(go.Scatter(
-                x=df_hist['record_date'],
-                y=df_hist['net_worth'],
-                mode='lines',
-                line=dict(color='#26A69A', width=3),
-                name='Net Servet',
-                hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Net Servet:</b> ₺%{y:,.2f}<br><b>Değişim:</b> ₺%{customdata[0]:,.2f} (%%{customdata[1]:.2f}%)<extra></extra>',
-                customdata=df_hist[['daily_change', 'daily_pct']]
-            ), row=1, col=1)
+                fig.add_trace(go.Scatter(
+                    x=df_hist['record_date'], y=df_hist['sma_7'], mode='lines',
+                    line=dict(color='#FFA726', width=2, dash='dash'), name='7G Hareketli Ort. (SMA)',
+                    hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>SMA(7):</b> ₺%{y:,.2f}<extra></extra>'
+                ), row=1, col=1)
 
-            fig.add_trace(go.Scatter(
-                x=df_hist['record_date'],
-                y=df_hist['sma_7'],
-                mode='lines',
-                line=dict(color='#FFA726', width=2, dash='dash'),
-                name='7G Hareketli Ort. (SMA)',
-                hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>SMA(7):</b> ₺%{y:,.2f}<extra></extra>'
-            ), row=1, col=1)
+                fig.add_trace(go.Bar(
+                    x=df_hist['record_date'], y=df_hist['daily_change'],
+                    marker_color=df_hist['change_color'], name='Günlük Değişim',
+                    hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Değişim:</b> ₺%{y:,.2f}<extra></extra>'
+                ), row=2, col=1)
 
-            fig.add_trace(go.Bar(
-                x=df_hist['record_date'],
-                y=df_hist['daily_change'],
-                marker_color=df_hist['change_color'],
-                name='Günlük Kâr/Zarar',
-                hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Kâr/Zarar:</b> ₺%{y:,.2f}<extra></extra>'
-            ), row=2, col=1)
+                fig.update_xaxes(row=2, col=1, rangeslider=dict(visible=True, thickness=0.08, bgcolor="rgba(128,128,128,0.1)"),
+                                 rangeselector=dict(buttons=list([
+                                     dict(count=1, label="1A", step="month", stepmode="backward"),
+                                     dict(count=3, label="3A", step="month", stepmode="backward"),
+                                     dict(count=6, label="6A", step="month", stepmode="backward"),
+                                     dict(count=1, label="YTD", step="year", stepmode="todate"),
+                                     dict(step="all", label="Tümü")
+                                 ]), bgcolor='rgba(0,0,0,0.1)'), showgrid=True, gridcolor='rgba(128, 128, 128, 0.15)')
+                fig.update_xaxes(row=1, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.15)')
+                fig.update_yaxes(row=1, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.15)', tickprefix="₺")
+                fig.update_yaxes(row=2, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.15)', title_text="Değişim")
 
+            else:
+                # Tümünü Karşılaştır (Klasik Görünüm)
+                fig = go.Figure()
+
+                fig.add_trace(go.Scatter(
+                    x=df_hist['record_date'], y=df_hist['total_assets'], mode='lines', fill='tozeroy',
+                    line=dict(color='#2962FF', width=2), fillcolor='rgba(41, 98, 255, 0.1)', name='Toplam Varlık',
+                    hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Varlık:</b> ₺%{y:,.2f}<extra></extra>'
+                ))
+
+                fig.add_trace(go.Scatter(
+                    x=df_hist['record_date'], y=df_hist['total_debts'], mode='lines',
+                    line=dict(color='#EF5350', width=2, dash='dot'), name='Toplam Borç',
+                    hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Borç:</b> ₺%{y:,.2f}<extra></extra>'
+                ))
+
+                fig.add_trace(go.Scatter(
+                    x=df_hist['record_date'], y=df_hist['net_worth'], mode='lines',
+                    line=dict(color='#26A69A', width=3), name='Net Servet',
+                    hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Net Servet:</b> ₺%{y:,.2f}<extra></extra>'
+                ))
+
+                fig.update_layout(
+                    xaxis=dict(
+                        rangeslider=dict(visible=True, thickness=0.08, bgcolor="rgba(128,128,128,0.1)"),
+                        rangeselector=dict(buttons=list([
+                            dict(count=1, label="1A", step="month", stepmode="backward"),
+                            dict(count=3, label="3A", step="month", stepmode="backward"),
+                            dict(count=6, label="6A", step="month", stepmode="backward"),
+                            dict(count=1, label="YTD", step="year", stepmode="todate"),
+                            dict(step="all", label="Tümü")
+                        ]), bgcolor='rgba(0,0,0,0.1)'),
+                        showgrid=True, gridcolor='rgba(128, 128, 128, 0.15)'
+                    ),
+                    yaxis=dict(showgrid=True, gridcolor='rgba(128, 128, 128, 0.15)', tickprefix="₺")
+                )
+
+            # Ortak Ayarlar
             fig.update_layout(
-                separators=".,",
-                margin=dict(l=0, r=0, t=20, b=0),
-                hovermode='x unified',
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
+                separators=".,", margin=dict(l=0, r=0, t=20, b=0),
+                hovermode='x unified', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
                 legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
             )
-            
-            # X ekseni zaman çizelgesi (Range Slider ve Butonlar)
-            fig.update_xaxes(
-                row=2, col=1,
-                rangeslider=dict(visible=True, thickness=0.08, bgcolor="rgba(128,128,128,0.1)"),
-                rangeselector=dict(
-                    buttons=list([
-                        dict(count=1, label="1A", step="month", stepmode="backward"),
-                        dict(count=3, label="3A", step="month", stepmode="backward"),
-                        dict(count=6, label="6A", step="month", stepmode="backward"),
-                        dict(count=1, label="YTD", step="year", stepmode="todate"),
-                        dict(step="all", label="Tümü")
-                    ]),
-                    bgcolor='rgba(0,0,0,0.1)'
-                ),
-                showgrid=True, gridcolor='rgba(128, 128, 128, 0.15)'
-            )
-            fig.update_xaxes(row=1, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.15)')
-
-            fig.update_yaxes(row=1, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.15)', tickprefix="₺")
-            fig.update_yaxes(row=2, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.15)', title_text="Değişim")
-
             fig.update_xaxes(showspikes=True, spikecolor="gray", spikesnap="cursor", spikemode="across")
             fig.update_yaxes(showspikes=True, spikecolor="gray", spikethickness=1)
 
