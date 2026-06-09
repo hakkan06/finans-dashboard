@@ -187,7 +187,15 @@ with tab_portfoy:
                 total_tax_try = tax
                 display_price = f"₺ {curr_price:,.2f}"
 
-            last_upd_str = str(item.get('last_updated'))[:16].replace("T", " ") if item.get('last_updated') else "Güncellenmedi"
+            if item.get('last_updated'):
+                dt = pd.to_datetime(item['last_updated'])
+                if dt.tzinfo is None:
+                    dt = dt.tz_localize('UTC').tz_convert('Europe/Istanbul')
+                else:
+                    dt = dt.tz_convert('Europe/Istanbul')
+                last_upd_str = dt.strftime('%Y-%m-%d %H:%M')
+            else:
+                last_upd_str = "Güncellenmedi"
 
             portfolio_table.append({
                 "Tür": item.get('asset_type', 'Bilinmiyor'),
