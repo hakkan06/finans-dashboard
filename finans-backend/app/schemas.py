@@ -38,6 +38,7 @@ class PortfolioItem(BaseModel):
     name: str
     total_qty: float
     current_price: float
+    total_cost: float
     total_tax: float
     net_value: float
     last_updated: Optional[datetime] = None

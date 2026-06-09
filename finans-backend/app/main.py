@@ -184,14 +184,17 @@ def get_portfolio_summary(db: Session = Depends(get_db)):
         total_qty = 0.0
         total_net_value = 0.0
         total_tax = 0.0
+        total_cost = 0.0
         curr_price = asset.current_price or 0.0
         is_fund = (asset.asset_type == "FUND")
 
         for lot in buy_lots:
             if lot['qty'] > 0:
                 total_qty += lot['qty']
+                cost = lot['qty'] * lot['price']
+                total_cost += cost
                 gross_val = lot['qty'] * curr_price
-                profit = gross_val - (lot['qty'] * lot['price'])
+                profit = gross_val - cost
                 tax = (profit * 0.175) if (is_fund and profit > 0) else 0.0
                 total_tax += tax
                 total_net_value += (gross_val - tax)
@@ -207,6 +210,7 @@ def get_portfolio_summary(db: Session = Depends(get_db)):
             "name": asset.name,
             "total_qty": total_qty,
             "current_price": curr_price,
+            "total_cost": total_cost,
             "total_tax": total_tax,
             "net_value": total_net_value,
             "last_updated": asset.last_updated
