@@ -1,4 +1,21 @@
-# 1. Disk Alanı
+# 0. Kalıcı Disk (Persistent Volume)
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: finans-postgres-pv
+spec:
+  capacity:
+    storage: 1Gi
+  volumeMode: Filesystem
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: "/Users/hakan/Desktop/kubernetes/finans-projesi/db-storage"
+
+---
+# 1. Disk Alanı Talebi (Persistent Volume Claim)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -6,6 +23,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
+  storageClassName: manual
   resources:
     requests:
       storage: 1Gi
