@@ -5,6 +5,7 @@ import os
 import time
 from datetime import date
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 
@@ -477,36 +478,74 @@ with tab_trend:
             df_hist['record_date'] = pd.to_datetime(df_hist['record_date'])
             df_hist.sort_values('record_date', inplace=True)
 
-            fig = go.Figure()
+            # --- YENİ HESAPLAMALAR ---
+            # Günlük Değişim ve Yüzde (Net Servet üzerinden)
+            df_hist['prev_net_worth'] = df_hist['net_worth'].shift(1)
+            df_hist['daily_change'] = df_hist['net_worth'] - df_hist['prev_net_worth']
+            df_hist['daily_pct'] = (df_hist['daily_change'] / df_hist['prev_net_worth']) * 100
+            df_hist['daily_pct'] = df_hist['daily_pct'].fillna(0)
+            df_hist['daily_change'] = df_hist['daily_change'].fillna(0)
+            
+            # Bar chart renkleri: Kâr yeşil, zarar kırmızı
+            df_hist['change_color'] = df_hist['daily_change'].apply(lambda x: '#26A69A' if x >= 0 else '#EF5350')
+            
+            # 7 Günlük Basit Hareketli Ortalama (SMA)
+            df_hist['sma_7'] = df_hist['net_worth'].rolling(window=7, min_periods=1).mean()
+            # -------------------------
+
+            fig = make_subplots(
+                rows=2, cols=1, 
+                shared_xaxes=True, 
+                vertical_spacing=0.03,
+                row_heights=[0.75, 0.25]
+            )
 
             fig.add_trace(go.Scatter(
                 x=df_hist['record_date'],
                 y=df_hist['total_assets'],
                 fill='tozeroy',
                 mode='lines',
-                line=dict(color='#2962FF', width=3),
-                fillcolor='rgba(41, 98, 255, 0.15)',
+                line=dict(color='#2962FF', width=2),
+                fillcolor='rgba(41, 98, 255, 0.1)',
                 name='Toplam Varlık',
                 hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Varlık:</b> ₺%{y:,.2f}<extra></extra>'
-            ))
+            ), row=1, col=1)
 
             fig.add_trace(go.Scatter(
                 x=df_hist['record_date'],
                 y=df_hist['total_debts'],
                 mode='lines',
-                line=dict(color='#E53935', width=2, dash='dot'),
+                line=dict(color='#EF5350', width=2, dash='dot'),
                 name='Toplam Borç',
                 hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Borç:</b> ₺%{y:,.2f}<extra></extra>'
-            ))
+            ), row=1, col=1)
 
             fig.add_trace(go.Scatter(
                 x=df_hist['record_date'],
                 y=df_hist['net_worth'],
                 mode='lines',
-                line=dict(color='#43A047', width=2),
+                line=dict(color='#26A69A', width=3),
                 name='Net Servet',
-                hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Net Servet:</b> ₺%{y:,.2f}<extra></extra>'
-            ))
+                hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Net Servet:</b> ₺%{y:,.2f}<br><b>Değişim:</b> ₺%{customdata[0]:,.2f} (%%{customdata[1]:.2f}%)<extra></extra>',
+                customdata=df_hist[['daily_change', 'daily_pct']]
+            ), row=1, col=1)
+
+            fig.add_trace(go.Scatter(
+                x=df_hist['record_date'],
+                y=df_hist['sma_7'],
+                mode='lines',
+                line=dict(color='#FFA726', width=2, dash='dash'),
+                name='7G Hareketli Ort. (SMA)',
+                hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>SMA(7):</b> ₺%{y:,.2f}<extra></extra>'
+            ), row=1, col=1)
+
+            fig.add_trace(go.Bar(
+                x=df_hist['record_date'],
+                y=df_hist['daily_change'],
+                marker_color=df_hist['change_color'],
+                name='Günlük Kâr/Zarar',
+                hovertemplate='<b>Tarih:</b> %{x|%d %b %Y}<br><b>Kâr/Zarar:</b> ₺%{y:,.2f}<extra></extra>'
+            ), row=2, col=1)
 
             fig.update_layout(
                 separators=".,",
@@ -515,22 +554,33 @@ with tab_trend:
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
                 legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-                xaxis=dict(
-                    showgrid=True,
-                    gridcolor='rgba(128, 128, 128, 0.15)',
-                    tickformat='%d %b'
-                ),
-                yaxis=dict(
-                    showgrid=True,
-                    gridcolor='rgba(128, 128, 128, 0.15)',
-                    tickprefix="₺"
-                )
             )
+            
+            # X ekseni zaman çizelgesi (Range Slider ve Butonlar)
+            fig.update_xaxes(
+                row=2, col=1,
+                rangeslider=dict(visible=True, thickness=0.08, bgcolor="rgba(128,128,128,0.1)"),
+                rangeselector=dict(
+                    buttons=list([
+                        dict(count=1, label="1A", step="month", stepmode="backward"),
+                        dict(count=3, label="3A", step="month", stepmode="backward"),
+                        dict(count=6, label="6A", step="month", stepmode="backward"),
+                        dict(count=1, label="YTD", step="year", stepmode="todate"),
+                        dict(step="all", label="Tümü")
+                    ]),
+                    bgcolor='rgba(0,0,0,0.1)'
+                ),
+                showgrid=True, gridcolor='rgba(128, 128, 128, 0.15)'
+            )
+            fig.update_xaxes(row=1, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.15)')
+
+            fig.update_yaxes(row=1, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.15)', tickprefix="₺")
+            fig.update_yaxes(row=2, col=1, showgrid=True, gridcolor='rgba(128, 128, 128, 0.15)', title_text="Değişim")
 
             fig.update_xaxes(showspikes=True, spikecolor="gray", spikesnap="cursor", spikemode="across")
             fig.update_yaxes(showspikes=True, spikecolor="gray", spikethickness=1)
 
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
             st.caption("Veriler, sisteme giriş yaptığınız veya 'Piyasa Fiyatlarını Güncelle' butonuna bastığınız günlerin kapanış değerlerini baz alır.")
         else:
             st.info("Henüz grafik çizecek kadar tarihsel veri birikmedi. (Grafik yarına veya fiyat güncellediğinizde oluşacaktır).")
