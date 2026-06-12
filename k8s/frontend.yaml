@@ -16,9 +16,9 @@ spec:
       - name: finans-frontend
         image: finans-frontend:latest
         imagePullPolicy: IfNotPresent
-	ports:
-	- containerPort: 8501	
- 	env:
+        ports:
+        - containerPort: 8501
+        env:
         - name: TZ
           value: "Europe/Istanbul"
         - name: API_URL
