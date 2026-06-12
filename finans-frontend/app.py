@@ -850,24 +850,64 @@ with tab_trend:
                 fig.update_yaxes(row=2, col=1, showgrid=True, gridcolor='rgba(128,128,128,0.1)')
 
             else:
+                # ── İndeksli Karşılaştır (baz = 100) ──────────────────────
+                # Her seriyi başlangıç değerine bölerek normalize ediyoruz.
+                # Böylece farklı ölçekteki (₺500k varlık, ₺100k borç) seriler
+                # aynı eksende anlamlı biçimde karşılaştırılabilir.
+                SERIES = [
+                    ("total_assets", "#2962FF", "Toplam Varlık", "rgba(41,98,255,0.08)"),
+                    ("net_worth",    "#26A69A", "Net Servet",    "rgba(38,166,154,0.08)"),
+                    ("total_debts",  "#EF5350", "Toplam Borç",   "rgba(239,83,80,0.06)"),
+                ]
+
                 fig = go.Figure()
-                for col, color, name in [
-                    ("total_assets", "#2962FF", "Toplam Varlık"),
-                    ("total_debts",  "#EF5350", "Toplam Borç"),
-                    ("net_worth",    "#26A69A", "Net Servet"),
-                ]:
+
+                for col, color, name, fill_color in SERIES:
+                    base = df_hist[col].iloc[0]
+                    if base == 0:
+                        continue
+                    indexed   = (df_hist[col] / base) * 100          # baz=100
+                    actual    = df_hist[col]                           # hover için gerçek değer
+                    pct_chg   = indexed - 100                         # başlangıçtan % değişim
+
                     fig.add_trace(go.Scatter(
-                        x=df_hist['record_date'], y=df_hist[col], mode='lines',
-                        line=dict(color=color, width=2), name=name,
-                        hovertemplate=f'<b>%{{x|%d %b %Y}}</b><br>{name}: ₺%{{y:,.0f}}<extra></extra>'
+                        x=df_hist['record_date'],
+                        y=indexed,
+                        mode='lines',
+                        fill='tozeroy',
+                        fillcolor=fill_color,
+                        line=dict(color=color, width=2),
+                        name=name,
+                        customdata=list(zip(actual, pct_chg)),
+                        hovertemplate=(
+                            f'<b>%{{x|%d %b %Y}}</b><br>'
+                            f'{name}: ₺%{{customdata[0]:,.0f}}<br>'
+                            f'Başlangıçtan: %{{customdata[1]:+.1f}}%'
+                            f'<extra></extra>'
+                        ),
                     ))
+
+                # Başlangıç baz çizgisi (100 = değişim yok)
+                fig.add_hline(
+                    y=100,
+                    line=dict(color="rgba(128,128,128,0.35)", width=1, dash="dot"),
+                    annotation_text="Baz (başlangıç)",
+                    annotation_position="bottom right",
+                    annotation_font=dict(size=10, color="rgba(128,128,128,0.6)"),
+                )
+
                 fig.update_layout(
                     xaxis=dict(
                         rangeslider=dict(visible=True, thickness=0.06, bgcolor="rgba(128,128,128,0.08)"),
                         rangeselector=dict(buttons=RANGE_BUTTONS, bgcolor='rgba(0,0,0,0.08)', font=dict(size=11)),
                         showgrid=True, gridcolor='rgba(128,128,128,0.1)'
                     ),
-                    yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.1)', tickprefix="₺")
+                    yaxis=dict(
+                        showgrid=True, gridcolor='rgba(128,128,128,0.1)',
+                        ticksuffix="",
+                        tickformat=".0f",
+                        title=dict(text="İndeks (Baz = 100)", font=dict(size=11)),
+                    )
                 )
 
             fig.update_layout(
