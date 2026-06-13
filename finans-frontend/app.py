@@ -846,7 +846,21 @@ with tab_borc:
         with st.expander("🔗 Borcu Gruba Ata", expanded=False):
             if groups and debts:
                 with st.form("assign_group_form"):
-                    debt_opts  = {d['name']: d['id'] for d in debts}
+                    # Hangi borç hangi grupta — lookup tablosu
+                    grup_adi_by_debt_id = {
+                        gd['id']: g['name']
+                        for g in groups
+                        for gd in g.get('debts', [])
+                    }
+                    # ID'yi etikete ekle → aynı isimli borçlar çakışmaz
+                    debt_opts = {}
+                    for d in debts:
+                        mevcut = grup_adi_by_debt_id.get(d['id'])
+                        etiket = f"{d['name']}  #{d['id']}"
+                        if mevcut:
+                            etiket += f"  ✓ {mevcut}"
+                        debt_opts[etiket] = d['id']
+
                     group_opts = {g['name']: g['id'] for g in groups}
                     group_opts["— Gruptan Çıkar —"] = None
                     sel_debt  = st.selectbox("Borç", options=list(debt_opts.keys()), label_visibility="collapsed")
@@ -864,6 +878,7 @@ with tab_borc:
                             st.error("Atama başarısız.")
             else:
                 st.info("Önce bir grup ve borç oluşturun.")
+
 
     with mgmt_col3:
         with st.expander("📝 Otomatik Ödeme Planı", expanded=False):
