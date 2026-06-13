@@ -725,72 +725,75 @@ with tab_borc:
             </div>
             """, unsafe_allow_html=True)
 
-            # Her bacağı expander içinde göster
-            for d in g.get('debts', []):
-                d_insts = d.get('installments', [])
-                d_paid  = sum(1 for i in d_insts if i['is_paid'])
-                d_total = len(d_insts)
-                d_paid_amt = sum(i['amount'] for i in d_insts if i['is_paid'])
-                d_total_amt= sum(i['amount'] for i in d_insts)
+    # ── TÜM TAKSİTLER — Tek Birleşik Tablo ──
+    st.markdown('<div class="section-title">Taksit Planı</div>', unsafe_allow_html=True)
 
-                with st.expander(f"  ▸ {d['name']}  —  {d_paid}/{d_total} taksit  |  ₺{d_paid_amt:,.0f} / ₺{d_total_amt:,.0f}", expanded=False):
-                    rows = []
-                    for inst in sorted(d_insts, key=lambda x: x['due_date']):
-                        due = pd.to_datetime(inst['due_date']).date()
-                        kalan = (due - today).days
-                        if inst['is_paid']:
-                            s = "✅ Ödendi"
-                        elif kalan < 0:
-                            s = f"🔴 {abs(kalan)}g gecikmiş"
-                        elif kalan <= 3:
-                            s = f"⚠️ {kalan}g kaldı"
-                        else:
-                            s = f"⏳ {kalan}g"
-                        rows.append({"Vade": inst['due_date'], "Tutar": inst['amount'], "Durum": s})
-                    if rows:
-                        st.dataframe(
-                            pd.DataFrame(rows).style.format({"Tutar": "₺ {:,.0f}"}),
-                            use_container_width=True,
-                            height=min(36 * (len(rows) + 1) + 3, 320),
-                            hide_index=True,
-                        )
-    else:
-        st.info("Henüz borç grubu oluşturulmadı. Aşağıdan bir grup oluşturup borçlarını atayabilirsin.")
+    all_inst_rows = []
 
-    # ── TEKİL BORÇLAR (gruba atanmamış) ──
-    if standalone_debts:
-        st.markdown('<div class="section-title" style="margin-top:1rem">Tekil Borçlar</div>', unsafe_allow_html=True)
-        installments_data = []
+    # Grup borçları
+    grup_adi_map = {}  # debt_id → grup adı
+    for g in groups:
+        for d in g.get('debts', []):
+            grup_adi_map[d['id']] = g['name']
 
-        for d in standalone_debts:
-            for inst in d.get('installments', []):
-                due_date_obj = pd.to_datetime(inst['due_date']).date()
-                days_left    = (due_date_obj - today).days
-                if inst['is_paid']:
-                    status_str = "✅ Ödendi"
-                elif days_left < 0:
-                    status_str = f"🔴 {abs(days_left)}g gecikmiş"
-                elif days_left <= 3:
-                    status_str = f"⚠️ {days_left}g kaldı"
-                else:
-                    status_str = f"⏳ {days_left}g"
-                installments_data.append({
-                    "id":      inst['id'],
-                    "Borç":   d['name'],
-                    "Tutar":  inst['amount'],
-                    "Vade":   inst['due_date'],
-                    "Durum":  status_str,
-                    "is_paid":inst['is_paid'],
-                })
+    for d in debts:
+        grup = grup_adi_map.get(d['id'], '')
+        for inst in d.get('installments', []):
+            due = pd.to_datetime(inst['due_date']).date()
+            kalan = (due - today).days
+            if inst['is_paid']:
+                s = "✅ Ödendi"
+            elif kalan < 0:
+                s = f"🔴 {abs(kalan)}g gecikmiş"
+            elif kalan <= 3:
+                s = f"⚠️ {kalan}g kaldı"
+            else:
+                s = f"⏳ {kalan}g"
+            all_inst_rows.append({
+                "id":      inst['id'],
+                "Grup":    grup,
+                "Borç":    d['name'],
+                "Tutar":   inst['amount'],
+                "Vade":    inst['due_date'],
+                "Durum":   s,
+                "is_paid": inst['is_paid'],
+            })
 
-        if installments_data:
-            df_f = pd.DataFrame(installments_data).sort_values("Vade")
+    if all_inst_rows:
+        df_all = pd.DataFrame(all_inst_rows).sort_values("Vade")
+
+        # Filtreler
+        fil_col1, fil_col2, fil_col3 = st.columns([1, 2, 1])
+        with fil_col1:
+            durum_filtre = st.selectbox(
+                "Durum", ["Tümü", "Ödenmemiş", "Gecikmiş", "Ödenenler"],
+                label_visibility="collapsed"
+            )
+        with fil_col2:
+            borc_isimleri = ["Tümü"] + sorted(set(df_all["Borç"]))
+            borc_filtre = st.selectbox("Borç", borc_isimleri, label_visibility="collapsed")
+
+        df_f = df_all.copy()
+        if durum_filtre == "Ödenmemiş":
+            df_f = df_f[~df_f["is_paid"]]
+        elif durum_filtre == "Gecikmiş":
+            df_f = df_f[df_f["Durum"].str.startswith("🔴")]
+        elif durum_filtre == "Ödenenler":
+            df_f = df_f[df_f["is_paid"]]
+        if borc_filtre != "Tümü":
+            df_f = df_f[df_f["Borç"] == borc_filtre]
+
+        if not df_f.empty:
+            # Grup sütununu göster sadece grup varsa
+            show_cols = ["Grup", "Borç", "Tutar", "Vade", "Durum"] if groups else ["Borç", "Tutar", "Vade", "Durum"]
             st.dataframe(
-                df_f[["Borç", "Tutar", "Vade", "Durum"]].style.format({"Tutar": "₺ {:,.2f}"}),
+                df_f[show_cols].style.format({"Tutar": "₺ {:,.0f}"}),
                 use_container_width=True,
-                height=min(36 * (len(df_f) + 1) + 3, 340),
+                height=min(36 * (len(df_f) + 1) + 3, 420),
                 hide_index=True,
             )
+        else:
+            st.info("Seçilen filtreyle eşleşen kayıt yok.")
     elif not debts:
         st.info("Aktif borç kaydı bulunmuyor.")
 
