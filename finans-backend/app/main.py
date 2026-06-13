@@ -457,3 +457,80 @@ def create_debt_schedule(schedule: schemas.DebtScheduleCreate, db: Session = Dep
 
     db.commit()
     return {"message": f"{schedule.name} planı oluşturuldu."}
+
+
+# =====================================================================
+# DEBT GROUP — Borç Grubu Endpoint'leri
+# =====================================================================
+
+def _compute_group_stats(group: models.DebtGroup) -> dict:
+    """Bir grubun ödenen/kalan/yüzde istatistiklerini hesaplar."""
+    total_paid      = 0.0
+    total_remaining = 0.0
+    for debt in group.debts:
+        for inst in debt.installments:
+            if inst.is_paid:
+                total_paid += inst.amount
+            else:
+                total_remaining += inst.amount
+    total = total_paid + total_remaining
+    progress_pct = round((total_paid / total) * 100, 2) if total > 0 else 0.0
+    return {
+        "total_paid":      total_paid,
+        "total_remaining": total_remaining,
+        "progress_pct":    progress_pct,
+    }
+
+
+@app.post("/debt-groups/", response_model=schemas.DebtGroupResponse)
+def create_debt_group(group: schemas.DebtGroupCreate, db: Session = Depends(get_db)):
+    db_group = models.DebtGroup(**group.dict())
+    db.add(db_group)
+    db.commit()
+    db.refresh(db_group)
+    stats = _compute_group_stats(db_group)
+    return {**db_group.__dict__, **stats}
+
+
+@app.get("/debt-groups/", response_model=list[schemas.DebtGroupResponse])
+def read_debt_groups(db: Session = Depends(get_db)):
+    groups = db.query(models.DebtGroup).all()
+    result = []
+    for g in groups:
+        stats = _compute_group_stats(g)
+        result.append({**g.__dict__, **stats})
+    return result
+
+
+@app.delete("/debt-groups/{group_id}")
+def delete_debt_group(group_id: int, db: Session = Depends(get_db)):
+    group = db.query(models.DebtGroup).filter(models.DebtGroup.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Grup bulunamadı")
+    # Bağlı borçların group_id'sini NULL'a çek — borçları silme
+    for debt in group.debts:
+        debt.group_id = None
+    db.delete(group)
+    db.commit()
+    return {"message": f"'{group.name}' grubu silindi, borçlar korundu."}
+
+
+@app.put("/debts/{debt_id}/assign-group")
+def assign_debt_to_group(
+    debt_id: int,
+    payload: schemas.AssignGroupRequest,
+    db: Session = Depends(get_db)
+):
+    debt = db.query(models.Debt).filter(models.Debt.id == debt_id).first()
+    if not debt:
+        raise HTTPException(status_code=404, detail="Borç bulunamadı")
+
+    if payload.group_id is not None:
+        group = db.query(models.DebtGroup).filter(models.DebtGroup.id == payload.group_id).first()
+        if not group:
+            raise HTTPException(status_code=404, detail="Grup bulunamadı")
+
+    debt.group_id = payload.group_id
+    db.commit()
+    action = f"'{group.name}' grubuna atandı" if payload.group_id else "gruptan çıkarıldı"
+    return {"message": f"'{debt.name}' {action}."}

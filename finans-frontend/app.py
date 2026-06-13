@@ -609,17 +609,163 @@ with tab_portfoy:
 # =====================================================================
 # 2. TAB: BORÇ TAKİBİ
 # =====================================================================
+
+# CSS — Grup kartı ve progress bar
+st.markdown("""
+<style>
+.group-card {
+    border: 1px solid rgba(128,128,128,0.15);
+    border-radius: 14px;
+    padding: 16px 18px 12px;
+    margin-bottom: 14px;
+    background: rgba(128,128,128,0.03);
+}
+.group-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+.group-title {
+    font-size: 15px;
+    font-weight: 600;
+    flex: 1;
+}
+.group-stats {
+    display: flex;
+    gap: 18px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    opacity: 0.65;
+}
+.group-stat-val {
+    font-weight: 600;
+    font-size: 13px;
+    opacity: 1;
+}
+.progress-bar-track {
+    height: 6px;
+    border-radius: 99px;
+    background: rgba(128,128,128,0.12);
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+.progress-bar-fill {
+    height: 100%;
+    border-radius: 99px;
+    background: linear-gradient(90deg, #2962FF, #26A69A);
+    transition: width 0.4s ease;
+}
+.progress-label {
+    font-size: 11px;
+    opacity: 0.45;
+    text-align: right;
+}
+.standalone-section {
+    border-top: 1px solid rgba(128,128,128,0.1);
+    padding-top: 10px;
+    margin-top: 6px;
+}
+</style>
+""", unsafe_allow_html=True)
+
 with tab_borc:
 
-    if debts:
-        installments_data = []
-        today = date.today()
+    today = date.today()
 
-        for d in debts:
+    # ── Borç grubu verisi ──
+    try:
+        res_groups = requests.get(f"{API_URL}/debt-groups/", timeout=5)
+        groups = res_groups.json() if res_groups.status_code == 200 else []
+    except Exception:
+        groups = []
+
+    # Gruba atanmış debt id'leri
+    grouped_debt_ids = set()
+    for g in groups:
+        for d in g.get('debts', []):
+            grouped_debt_ids.add(d['id'])
+
+    # Gruba atanmamış tekil borçlar
+    standalone_debts = [d for d in debts if d['id'] not in grouped_debt_ids]
+
+    # ── BORÇ GRUPLARI ──
+    if groups:
+        st.markdown('<div class="section-title">Borç Grupları</div>', unsafe_allow_html=True)
+
+        for g in groups:
+            paid     = g.get('total_paid', 0)
+            remaining= g.get('total_remaining', 0)
+            pct      = g.get('progress_pct', 0)
+            contracted = g.get('contracted_amount')
+            total_insts = sum(len(d.get('installments', [])) for d in g.get('debts', []))
+            paid_insts  = sum(1 for d in g.get('debts', [])
+                              for i in d.get('installments', []) if i['is_paid'])
+
+            desc_html = f'<span style="opacity:.5;font-size:12px">{g["description"]}</span>' if g.get('description') else ''
+            contracted_html = (f'<span style="opacity:.45;font-size:11px">Sözleşme: ₺{contracted:,.0f}</span>'
+                               if contracted else '')
+
+            st.markdown(f"""
+            <div class="group-card">
+                <div class="group-card-header">
+                    <span class="group-title">🏠 {g['name']}</span>
+                    {contracted_html}
+                </div>
+                {desc_html}
+                <div class="group-stats">
+                    <span>Ödenen <span class="group-stat-val">₺{paid:,.0f}</span></span>
+                    <span>Kalan <span class="group-stat-val">₺{remaining:,.0f}</span></span>
+                    <span>Taksit <span class="group-stat-val">{paid_insts}/{total_insts}</span></span>
+                </div>
+                <div class="progress-bar-track">
+                    <div class="progress-bar-fill" style="width:{pct}%"></div>
+                </div>
+                <div class="progress-label">%{pct:.1f} tamamlandı</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Her bacağı expander içinde göster
+            for d in g.get('debts', []):
+                d_insts = d.get('installments', [])
+                d_paid  = sum(1 for i in d_insts if i['is_paid'])
+                d_total = len(d_insts)
+                d_paid_amt = sum(i['amount'] for i in d_insts if i['is_paid'])
+                d_total_amt= sum(i['amount'] for i in d_insts)
+
+                with st.expander(f"  ▸ {d['name']}  —  {d_paid}/{d_total} taksit  |  ₺{d_paid_amt:,.0f} / ₺{d_total_amt:,.0f}", expanded=False):
+                    rows = []
+                    for inst in sorted(d_insts, key=lambda x: x['due_date']):
+                        due = pd.to_datetime(inst['due_date']).date()
+                        kalan = (due - today).days
+                        if inst['is_paid']:
+                            s = "✅ Ödendi"
+                        elif kalan < 0:
+                            s = f"🔴 {abs(kalan)}g gecikmiş"
+                        elif kalan <= 3:
+                            s = f"⚠️ {kalan}g kaldı"
+                        else:
+                            s = f"⏳ {kalan}g"
+                        rows.append({"Vade": inst['due_date'], "Tutar": inst['amount'], "Durum": s})
+                    if rows:
+                        st.dataframe(
+                            pd.DataFrame(rows).style.format({"Tutar": "₺ {:,.0f}"}),
+                            use_container_width=True,
+                            height=min(36 * (len(rows) + 1) + 3, 320),
+                            hide_index=True,
+                        )
+    else:
+        st.info("Henüz borç grubu oluşturulmadı. Aşağıdan bir grup oluşturup borçlarını atayabilirsin.")
+
+    # ── TEKİL BORÇLAR (gruba atanmamış) ──
+    if standalone_debts:
+        st.markdown('<div class="section-title" style="margin-top:1rem">Tekil Borçlar</div>', unsafe_allow_html=True)
+        installments_data = []
+
+        for d in standalone_debts:
             for inst in d.get('installments', []):
                 due_date_obj = pd.to_datetime(inst['due_date']).date()
                 days_left    = (due_date_obj - today).days
-
                 if inst['is_paid']:
                     status_str = "✅ Ödendi"
                 elif days_left < 0:
@@ -628,70 +774,99 @@ with tab_borc:
                     status_str = f"⚠️ {days_left}g kaldı"
                 else:
                     status_str = f"⏳ {days_left}g"
-
                 installments_data.append({
-                    "id":             inst['id'],
-                    "Borç":           d['name'],
-                    "Tutar":          inst['amount'],
-                    "Vade":           inst['due_date'],
-                    "Durum":          status_str,
-                    "is_paid":        inst['is_paid'],
+                    "id":      inst['id'],
+                    "Borç":   d['name'],
+                    "Tutar":  inst['amount'],
+                    "Vade":   inst['due_date'],
+                    "Durum":  status_str,
+                    "is_paid":inst['is_paid'],
                 })
 
-        # ── Filtreler ──
-        fil_col1, fil_col2, fil_col3 = st.columns([1, 2, 1])
-        with fil_col1:
-            durum_filtre = st.selectbox("Durum", ["Tümü", "Ödenmemiş", "Gecikmiş", "Ödenenler"], label_visibility="collapsed")
-        with fil_col2:
-            borc_isimleri = ["Tümü"] + sorted(set(i["Borç"] for i in installments_data))
-            borc_filtre   = st.selectbox("Borç", borc_isimleri, label_visibility="collapsed")
-
-        filtrelenmis = installments_data.copy()
-        if durum_filtre == "Ödenmemiş":
-            filtrelenmis = [i for i in filtrelenmis if not i['is_paid']]
-        elif durum_filtre == "Gecikmiş":
-            filtrelenmis = [i for i in filtrelenmis if not i['is_paid'] and
-                            (pd.to_datetime(i['Vade']).date() - date.today()).days < 0]
-        elif durum_filtre == "Ödenenler":
-            filtrelenmis = [i for i in filtrelenmis if i['is_paid']]
-        if borc_filtre != "Tümü":
-            filtrelenmis = [i for i in filtrelenmis if i['Borç'] == borc_filtre]
-
-        if filtrelenmis:
-            df_f = pd.DataFrame(filtrelenmis).sort_values("Vade")
+        if installments_data:
+            df_f = pd.DataFrame(installments_data).sort_values("Vade")
             st.dataframe(
                 df_f[["Borç", "Tutar", "Vade", "Durum"]].style.format({"Tutar": "₺ {:,.2f}"}),
                 use_container_width=True,
-                height=min(36 * (len(df_f) + 1) + 3, 380),
+                height=min(36 * (len(df_f) + 1) + 3, 340),
                 hide_index=True,
             )
-        else:
-            st.info("Seçilen filtreyle eşleşen kayıt yok.")
-
-        # ── Ödeme İşaretleme ──
-        unpaid = sorted([i for i in installments_data if not i['is_paid']], key=lambda x: x['Vade'])
-        if unpaid:
-            st.markdown('<div class="section-title">Ödeme İşaretle</div>', unsafe_allow_html=True)
-            with st.form("pay_form"):
-                unpaid_opts = {f"{i['Borç']}  |  {i['Vade']}  |  ₺{i['Tutar']:,.0f}": i['id'] for i in unpaid}
-                selected_unpaid = st.selectbox("Taksit", options=list(unpaid_opts.keys()), label_visibility="collapsed")
-                if st.form_submit_button("✅ Ödendi Olarak İşaretle", use_container_width=True):
-                    res = requests.put(f"{API_URL}/installments/{unpaid_opts[selected_unpaid]}/toggle")
-                    if res.status_code == 200:
-                        st.toast("✅ Ödeme kaydedildi!")
-                        time.sleep(0.8)
-                        st.rerun()
-    else:
+    elif not debts:
         st.info("Aktif borç kaydı bulunmuyor.")
+
+    # ── ÖDEME İŞARETLE ──
+    all_installments = []
+    for d in debts:
+        for inst in d.get('installments', []):
+            if not inst['is_paid']:
+                all_installments.append({
+                    "id":    inst['id'],
+                    "label": f"{d['name']}  |  {inst['due_date']}  |  ₺{inst['amount']:,.0f}",
+                    "vade":  inst['due_date'],
+                })
+    all_installments.sort(key=lambda x: x['vade'])
+
+    if all_installments:
+        st.markdown('<div class="section-title">Ödeme İşaretle</div>', unsafe_allow_html=True)
+        with st.form("pay_form"):
+            unpaid_opts = {i['label']: i['id'] for i in all_installments}
+            selected_unpaid = st.selectbox("Taksit", options=list(unpaid_opts.keys()), label_visibility="collapsed")
+            if st.form_submit_button("✅ Ödendi Olarak İşaretle", use_container_width=True):
+                res = requests.put(f"{API_URL}/installments/{unpaid_opts[selected_unpaid]}/toggle")
+                if res.status_code == 200:
+                    st.toast("✅ Ödeme kaydedildi!")
+                    time.sleep(0.8)
+                    st.rerun()
 
     st.divider()
 
-    # ── Borç Yönetimi ──
-    st.markdown('<div class="section-title">Borç Yönetimi</div>', unsafe_allow_html=True)
-    mgmt_col1, mgmt_col2 = st.columns(2)
+    # ── YÖNETİM ──
+    st.markdown('<div class="section-title">Yönetim</div>', unsafe_allow_html=True)
+    mgmt_col1, mgmt_col2, mgmt_col3 = st.columns(3)
 
     with mgmt_col1:
-        with st.expander("📝 Otomatik Ödeme Planı Oluştur", expanded=False):
+        with st.expander("🗂️ Yeni Borç Grubu Oluştur", expanded=False):
+            with st.form("create_group_form"):
+                g_name  = st.text_input("Grup Adı (Örn: Faras İncek Evi)")
+                g_desc  = st.text_input("Açıklama (opsiyonel)")
+                g_total = st.number_input("Toplam Sözleşme Tutarı (opsiyonel)", min_value=0.0, value=0.0)
+                if st.form_submit_button("Grubu Oluştur", use_container_width=True):
+                    payload = {"name": g_name}
+                    if g_desc: payload["description"] = g_desc
+                    if g_total > 0: payload["contracted_amount"] = float(g_total)
+                    res = requests.post(f"{API_URL}/debt-groups/", json=payload)
+                    if res.status_code == 200:
+                        st.toast("✅ Grup oluşturuldu!")
+                        time.sleep(0.8)
+                        st.rerun()
+                    else:
+                        st.error("Grup oluşturulamadı.")
+
+    with mgmt_col2:
+        with st.expander("🔗 Borcu Gruba Ata", expanded=False):
+            if groups and debts:
+                with st.form("assign_group_form"):
+                    debt_opts  = {d['name']: d['id'] for d in debts}
+                    group_opts = {g['name']: g['id'] for g in groups}
+                    group_opts["— Gruptan Çıkar —"] = None
+                    sel_debt  = st.selectbox("Borç", options=list(debt_opts.keys()), label_visibility="collapsed")
+                    sel_group = st.selectbox("Grup", options=list(group_opts.keys()), label_visibility="collapsed")
+                    if st.form_submit_button("Ata", use_container_width=True):
+                        res = requests.put(
+                            f"{API_URL}/debts/{debt_opts[sel_debt]}/assign-group",
+                            json={"group_id": group_opts[sel_group]}
+                        )
+                        if res.status_code == 200:
+                            st.toast("✅ Atama yapıldı!")
+                            time.sleep(0.8)
+                            st.rerun()
+                        else:
+                            st.error("Atama başarısız.")
+            else:
+                st.info("Önce bir grup ve borç oluşturun.")
+
+    with mgmt_col3:
+        with st.expander("📝 Otomatik Ödeme Planı", expanded=False):
             with st.form("auto_debt_form"):
                 d_name  = st.text_input("Borç / Kredi Adı")
                 d_total = st.number_input("Toplam Tutar", min_value=0.01)
@@ -712,9 +887,12 @@ with tab_borc:
                     else:
                         st.error("Plan oluşturulamadı.")
 
-    with mgmt_col2:
-        with st.expander("🗑️ Borç Sil", expanded=False):
+    # ── BORÇ SİL (ayrı satır) ──
+    with st.expander("🗑️ Borç / Grup Sil", expanded=False):
+        del_col1, del_col2 = st.columns(2)
+        with del_col1:
             with st.form("del_debt_form"):
+                st.markdown("**Borç Sil**")
                 debt_opts = {d['name']: d['id'] for d in debts}
                 if debt_opts:
                     selected_del_debt = st.selectbox("Borç", options=list(debt_opts.keys()), label_visibility="collapsed")
@@ -730,7 +908,24 @@ with tab_borc:
                             st.error("Onay kutusunu işaretleyin.")
                 else:
                     st.info("Silinecek borç yok.")
-
+        with del_col2:
+            with st.form("del_group_form"):
+                st.markdown("**Grup Sil** *(borçlar korunur)*")
+                group_del_opts = {g['name']: g['id'] for g in groups}
+                if group_del_opts:
+                    sel_del_group = st.selectbox("Grup", options=list(group_del_opts.keys()), label_visibility="collapsed")
+                    onay_grup = st.checkbox("Grubu sil (borçlar grubundan çıkar)")
+                    if st.form_submit_button("Sil", use_container_width=True):
+                        if onay_grup:
+                            res = requests.delete(f"{API_URL}/debt-groups/{group_del_opts[sel_del_group]}")
+                            if res.status_code == 200:
+                                st.toast("🗑️ Grup silindi!")
+                                time.sleep(0.8)
+                                st.rerun()
+                        else:
+                            st.error("Onay kutusunu işaretleyin.")
+                else:
+                    st.info("Silinecek grup yok.")
 
 # =====================================================================
 # 3. TAB: TREND ANALİZİ
