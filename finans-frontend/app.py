@@ -384,18 +384,18 @@ st.markdown(f"""
 <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr);">
     <div class="kpi-card">
         <div class="kpi-label">💼 Toplam Varlık</div>
-        <div class="kpi-value">₺ {{global_total_assets:,.0f}}</div>
-        <div class="kpi-sub">{{varlik_cnt}} aktif varlık türü</div>
+        <div class="kpi-value">₺ {global_total_assets:,.0f}</div>
+        <div class="kpi-sub">{varlik_cnt} aktif varlık türü</div>
     </div>
     <div class="kpi-card">
         <div class="kpi-label">💳 Toplam Borç</div>
-        <div class="kpi-value">₺ {{global_total_debts:,.0f}}</div>
-        <div class="kpi-sub">{{borc_cnt}} borç kalemi</div>
+        <div class="kpi-value">₺ {global_total_debts:,.0f}</div>
+        <div class="kpi-sub">{borc_cnt} borç kalemi</div>
     </div>
     <div class="kpi-card kpi-card-accent">
         <div class="kpi-label">📈 Net Servet</div>
-        <div class="kpi-value {{net_color}}">₺ {{net_worth:,.0f}}</div>
-        <div class="kpi-sub">{{net_sign}}{{(net_worth/global_total_assets*100) if global_total_assets else 0:.1f}}% oran</div>
+        <div class="kpi-value {net_color}">₺ {net_worth:,.0f}</div>
+        <div class="kpi-sub">{net_sign}{(net_worth/global_total_assets*100) if global_total_assets else 0:.1f}% oran</div>
     </div>
     <a class="kpi-mood" href="http://localhost:8080" target="_blank">
         <div class="kpi-label">📔 MoodDiary</div>
