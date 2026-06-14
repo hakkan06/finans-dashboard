@@ -275,76 +275,6 @@ def get_cached_usd_rate():
 usd_try_rate = get_cached_usd_rate()
 
 
-# =====================================================================
-# SIDEBAR — Uygulama Navigasyonu
-# =====================================================================
-with st.sidebar:
-    st.markdown("""
-    <style>
-    /* Sidebar genişlik ve arka plan */
-    [data-testid="stSidebar"] {
-        min-width: 200px !important;
-        max-width: 200px !important;
-    }
-    [data-testid="stSidebar"] > div:first-child {
-        padding: 1.2rem 0.8rem 1rem;
-    }
-    .nav-label {
-        font-size: 10px;
-        font-weight: 600;
-        letter-spacing: .08em;
-        opacity: .4;
-        text-transform: uppercase;
-        margin-bottom: 6px;
-        padding-left: 4px;
-    }
-    .nav-app-active {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 7px 10px;
-        border-radius: 8px;
-        background: rgba(41,98,255,0.12);
-        border: 1px solid rgba(41,98,255,0.25);
-        font-size: 13px;
-        font-weight: 600;
-        margin-bottom: 4px;
-        color: #2962FF;
-    }
-    .nav-app-link {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 7px 10px;
-        border-radius: 8px;
-        font-size: 13px;
-        font-weight: 500;
-        margin-bottom: 4px;
-        opacity: .75;
-        text-decoration: none !important;
-        border: 1px solid transparent;
-        transition: background .15s, opacity .15s;
-    }
-    .nav-app-link:hover {
-        background: rgba(128,128,128,0.08);
-        opacity: 1;
-        border-color: rgba(128,128,128,0.15);
-    }
-    </style>
-
-    <div class="nav-label">Uygulamalar</div>
-
-    <div class="nav-app-active">
-        📈 Finans Dashboard
-    </div>
-
-    <a class="nav-app-link" href="http://localhost:8080" target="_blank">
-        📔 MoodDiary
-    </a>
-    """, unsafe_allow_html=True)
-
-    st.divider()
-    st.caption("© Kişisel Dashboard")
 
 
 # =====================================================================
@@ -432,22 +362,46 @@ varlik_cnt = len(summary_data)
 borc_cnt   = len(debts)
 
 st.markdown(f"""
-<div class="kpi-grid">
+<style>
+.kpi-mood {{
+    background: linear-gradient(135deg, rgba(124,58,237,0.15) 0%, rgba(168,85,247,0.08) 100%);
+    border: 1px solid rgba(139,92,246,0.35);
+    border-radius: 12px;
+    padding: 14px 16px;
+    cursor: pointer;
+    text-decoration: none;
+    display: block;
+    transition: border-color .2s, transform .15s;
+}}
+.kpi-mood:hover {{
+    border-color: rgba(139,92,246,0.7);
+    transform: translateY(-2px);
+}}
+.kpi-mood .kpi-label {{ color: #a78bfa; }}
+.kpi-mood .kpi-value {{ font-size: 1.25rem; color: #c4b5fd; font-weight: 600; margin: 4px 0 2px; }}
+.kpi-mood .kpi-sub {{ font-size: 11px; opacity: .55; }}
+</style>
+<div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr);">
     <div class="kpi-card">
         <div class="kpi-label">💼 Toplam Varlık</div>
-        <div class="kpi-value">₺ {global_total_assets:,.0f}</div>
-        <div class="kpi-sub">{varlik_cnt} aktif varlık türü</div>
+        <div class="kpi-value">₺ {{global_total_assets:,.0f}}</div>
+        <div class="kpi-sub">{{varlik_cnt}} aktif varlık türü</div>
     </div>
     <div class="kpi-card">
         <div class="kpi-label">💳 Toplam Borç</div>
-        <div class="kpi-value">₺ {global_total_debts:,.0f}</div>
-        <div class="kpi-sub">{borc_cnt} borç kalemi</div>
+        <div class="kpi-value">₺ {{global_total_debts:,.0f}}</div>
+        <div class="kpi-sub">{{borc_cnt}} borç kalemi</div>
     </div>
     <div class="kpi-card kpi-card-accent">
         <div class="kpi-label">📈 Net Servet</div>
-        <div class="kpi-value {net_color}">₺ {net_worth:,.0f}</div>
-        <div class="kpi-sub">{net_sign}{(net_worth/global_total_assets*100) if global_total_assets else 0:.1f}% oran</div>
+        <div class="kpi-value {{net_color}}">₺ {{net_worth:,.0f}}</div>
+        <div class="kpi-sub">{{net_sign}}{{(net_worth/global_total_assets*100) if global_total_assets else 0:.1f}}% oran</div>
     </div>
+    <a class="kpi-mood" href="http://localhost:8080" target="_blank">
+        <div class="kpi-label">📔 MoodDiary</div>
+        <div class="kpi-value">Günlük Tut</div>
+        <div class="kpi-sub">localhost:8080 ↗</div>
+    </a>
 </div>
 """, unsafe_allow_html=True)
 
