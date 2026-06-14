@@ -276,6 +276,78 @@ usd_try_rate = get_cached_usd_rate()
 
 
 # =====================================================================
+# SIDEBAR — Uygulama Navigasyonu
+# =====================================================================
+with st.sidebar:
+    st.markdown("""
+    <style>
+    /* Sidebar genişlik ve arka plan */
+    [data-testid="stSidebar"] {
+        min-width: 200px !important;
+        max-width: 200px !important;
+    }
+    [data-testid="stSidebar"] > div:first-child {
+        padding: 1.2rem 0.8rem 1rem;
+    }
+    .nav-label {
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: .08em;
+        opacity: .4;
+        text-transform: uppercase;
+        margin-bottom: 6px;
+        padding-left: 4px;
+    }
+    .nav-app-active {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 10px;
+        border-radius: 8px;
+        background: rgba(41,98,255,0.12);
+        border: 1px solid rgba(41,98,255,0.25);
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 4px;
+        color: #2962FF;
+    }
+    .nav-app-link {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 10px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        margin-bottom: 4px;
+        opacity: .75;
+        text-decoration: none !important;
+        border: 1px solid transparent;
+        transition: background .15s, opacity .15s;
+    }
+    .nav-app-link:hover {
+        background: rgba(128,128,128,0.08);
+        opacity: 1;
+        border-color: rgba(128,128,128,0.15);
+    }
+    </style>
+
+    <div class="nav-label">Uygulamalar</div>
+
+    <div class="nav-app-active">
+        📈 Finans Dashboard
+    </div>
+
+    <a class="nav-app-link" href="http://localhost:8080" target="_blank">
+        📔 MoodDiary
+    </a>
+    """, unsafe_allow_html=True)
+
+    st.divider()
+    st.caption("© Kişisel Dashboard")
+
+
+# =====================================================================
 # ÖN VERİ ÇEKİMİ
 # =====================================================================
 global_total_assets = 0.0
