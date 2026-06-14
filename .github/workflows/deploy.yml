@@ -5,12 +5,26 @@ on:
     branches:
       - main
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-and-deploy:
     runs-on: self-hosted
     steps:
+      - name: Workspace temizle
+        continue-on-error: true
+        run: |
+          # Nested .git dizinlerini kaldır (eski submodule kalıntıları)
+          find . -mindepth 2 -maxdepth 5 -name ".git" -type d -exec rm -rf {} + 2>/dev/null || true
+          # builds/ klasörünü temizle
+          rm -rf builds/ 2>/dev/null || true
+
       - name: Kodu çek
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          clean: true
 
       - name: Backend imajını derle
         run: |
