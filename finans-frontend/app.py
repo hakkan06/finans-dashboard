@@ -1059,20 +1059,42 @@ with tab_trend:
 
                 if target_col == "total_debts":
                     df_hist['bar_color'] = df_hist['daily_change'].apply(lambda x: '#EF5350' if x > 0 else '#26A69A')
+                    inc_color = '#EF5350'
+                    dec_color = '#26A69A'
                 else:
                     df_hist['bar_color'] = df_hist['daily_change'].apply(lambda x: '#26A69A' if x >= 0 else '#EF5350')
+                    inc_color = '#26A69A'
+                    dec_color = '#EF5350'
 
                 df_hist['sma_7'] = df_hist[target_col].rolling(window=7, min_periods=1).mean()
+
+                # --- Sentetik OHLC ve Heikin Ashi Hesaplaması ---
+                df_hist['O'] = df_hist['prev_val'].fillna(df_hist[target_col])
+                df_hist['C'] = df_hist[target_col]
+                df_hist['H'] = df_hist[['O', 'C']].max(axis=1)
+                df_hist['L'] = df_hist[['O', 'C']].min(axis=1)
+
+                ha_c = (df_hist['O'] + df_hist['H'] + df_hist['L'] + df_hist['C']) / 4
+                ha_o = [df_hist['O'].iloc[0]]
+                for i in range(1, len(df_hist)):
+                    ha_o.append((ha_o[-1] + ha_c.iloc[i-1]) / 2)
+                
+                df_hist['HA_O'] = ha_o
+                df_hist['HA_C'] = ha_c
+                df_hist['HA_H'] = df_hist[['H', 'HA_O', 'HA_C']].max(axis=1)
+                df_hist['HA_L'] = df_hist[['L', 'HA_O', 'HA_C']].min(axis=1)
 
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                                     vertical_spacing=0.03, row_heights=[0.75, 0.25])
 
-                fig.add_trace(go.Scatter(
-                    x=df_hist['record_date'], y=df_hist[target_col],
-                    mode='lines', fill='tozeroy', fillcolor=fill_color,
-                    line=dict(color=line_color, width=2.5), name=gosterge,
-                    hovertemplate=f'<b>%{{x|%d %b %Y}}</b><br>{gosterge}: ₺%{{y:,.0f}}<br>Δ ₺%{{customdata[0]:,.0f}} (%{{customdata[1]:.2f}}%)<extra></extra>',
-                    customdata=df_hist[['daily_change', 'daily_pct']]
+                fig.add_trace(go.Candlestick(
+                    x=df_hist['record_date'],
+                    open=df_hist['HA_O'], high=df_hist['HA_H'],
+                    low=df_hist['HA_L'], close=df_hist['HA_C'],
+                    increasing_line_color=inc_color, decreasing_line_color=dec_color,
+                    name=gosterge + ' (HA)',
+                    customdata=df_hist[[target_col, 'daily_change', 'daily_pct']],
+                    hovertemplate=f'<b>%{{x|%d %b %Y}}</b><br>{gosterge} (Gerçek): ₺%{{customdata[0]:,.0f}}<br>Δ ₺%{{customdata[1]:,.0f}} (%{{customdata[2]:.2f}}%)<extra></extra>'
                 ), row=1, col=1)
 
                 fig.add_trace(go.Scatter(
@@ -1080,6 +1102,8 @@ with tab_trend:
                     mode='lines', line=dict(color='#FFA726', width=1.5, dash='dash'),
                     name='SMA(7)', hovertemplate='<b>%{x|%d %b %Y}</b><br>SMA7: ₺%{y:,.0f}<extra></extra>'
                 ), row=1, col=1)
+                
+                fig.update_layout(xaxis_rangeslider_visible=False)
 
                 fig.add_trace(go.Bar(
                     x=df_hist['record_date'], y=df_hist['daily_change'],
