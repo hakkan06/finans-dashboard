@@ -756,8 +756,11 @@ with tab_borc:
 
     all_inst_rows = []
 
-    # group_id → grup adı map'i (/debts/ API'si group_id döndürüyor, bunu kullan)
-    grup_id_adi_map = {g['id']: g['name'] for g in groups}  # group_id → grup adı
+    # group_id → grup adı map'i (name boşsa description'ı fallback kullan)
+    grup_id_adi_map = {
+        g['id']: (g.get('name') or g.get('description') or f"Grup {g['id']}")
+        for g in groups
+    }
 
     for d in debts:
         grup = grup_id_adi_map.get(d.get('group_id'), '')
