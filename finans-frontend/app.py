@@ -348,7 +348,7 @@ st.markdown(f"""
     <span class="dash-title">💰 Finans Dashboard</span>
     <span class="badge-live">● Canlı</span>
     {badge_alerts}
-    <span class="dash-meta">USD/TRY ₺{usd_try_rate:,.2f} &nbsp;|&nbsp; {bugun.strftime('%d %b %Y')}</span>
+    <span class="dash-meta">USD/TRY ₺{usd_try_rate:,.2f} &middot; {bugun.strftime('%d %b %Y')}</span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -756,14 +756,11 @@ with tab_borc:
 
     all_inst_rows = []
 
-    # Grup borçları
-    grup_adi_map = {}  # debt_id → grup adı
-    for g in groups:
-        for d in g.get('debts', []):
-            grup_adi_map[d['id']] = g['name']
+    # group_id → grup adı map'i (/debts/ API'si group_id döndürüyor, bunu kullan)
+    grup_id_adi_map = {g['id']: g['name'] for g in groups}  # group_id → grup adı
 
     for d in debts:
-        grup = grup_adi_map.get(d['id'], '')
+        grup = grup_id_adi_map.get(d.get('group_id'), '')
         for inst in d.get('installments', []):
             due = pd.to_datetime(inst['due_date']).date()
             kalan = (due - today).days
