@@ -348,9 +348,16 @@ st.markdown(f"""
     <span class="dash-title">💰 Finans Dashboard</span>
     <span class="badge-live">● Canlı</span>
     {badge_alerts}
-    <span class="dash-meta">USD/TRY ₺{usd_try_rate:,.2f} · {bugun.strftime('%d %b %Y')}</span>
 </div>
 """, unsafe_allow_html=True)
+
+st.markdown(
+    f'<div style="margin-top:-2.6rem;margin-bottom:1.2rem;text-align:right;'
+    f'font-size:12px;opacity:0.55;font-weight:400;font-family:Inter,sans-serif">'
+    f'USD/TRY ₺{usd_try_rate:,.2f} &nbsp; {bugun.strftime("%d %b %Y")}'
+    f'</div>',
+    unsafe_allow_html=True
+)
 
 
 # =====================================================================
