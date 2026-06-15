@@ -1087,14 +1087,18 @@ with tab_trend:
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                                     vertical_spacing=0.03, row_heights=[0.75, 0.25])
 
+                hover_texts = []
+                for idx, row in df_hist.iterrows():
+                    hover_texts.append(f"<b>{row['record_date'].strftime('%d %b %Y')}</b><br>{gosterge} (Gerçek): ₺{row[target_col]:,.0f}<br>Δ ₺{row['daily_change']:,.0f} ({row['daily_pct']:.2f}%)")
+
                 fig.add_trace(go.Candlestick(
                     x=df_hist['record_date'],
                     open=df_hist['HA_O'], high=df_hist['HA_H'],
                     low=df_hist['HA_L'], close=df_hist['HA_C'],
                     increasing_line_color=inc_color, decreasing_line_color=dec_color,
                     name=gosterge + ' (HA)',
-                    customdata=df_hist[[target_col, 'daily_change', 'daily_pct']],
-                    hovertemplate=f'<b>%{{x|%d %b %Y}}</b><br>{gosterge} (Gerçek): ₺%{{customdata[0]:,.0f}}<br>Δ ₺%{{customdata[1]:,.0f}} (%{{customdata[2]:.2f}}%)<extra></extra>'
+                    text=hover_texts,
+                    hoverinfo='text'
                 ), row=1, col=1)
 
                 fig.add_trace(go.Scatter(
