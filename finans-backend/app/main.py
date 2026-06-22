@@ -264,13 +264,15 @@ def update_asset_prices(db: Session = Depends(get_db)):
     for asset in assets:
         try:
             if asset.asset_type == "US_STOCK":
-                hist = yf.Ticker(asset.symbol).history(period="5d")
-                if not hist.empty:
-                    if len(hist) > 1:
-                        asset.previous_price = float(hist["Close"].iloc[-2])
-                    asset.current_price = float(hist["Close"].iloc[-1])
-                    asset.last_updated = datetime.now(TR_TZ)
-                    updated_count += 1
+                hist = yf.Ticker(asset.symbol).history(period="7d")
+                if not hist.empty and "Close" in hist:
+                    valid_closes = hist["Close"].dropna()
+                    if not valid_closes.empty:
+                        if len(valid_closes) > 1:
+                            asset.previous_price = float(valid_closes.iloc[-2])
+                        asset.current_price = float(valid_closes.iloc[-1])
+                        asset.last_updated = datetime.now(TR_TZ)
+                        updated_count += 1
 
             elif asset.asset_type == "TR_STOCK":
                 # .strip() ile yanlışlıkla girilen boşlukları temizliyoruz

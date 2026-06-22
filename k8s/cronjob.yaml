@@ -4,8 +4,8 @@ metadata:
   name: finans-daily-snapshot
   namespace: default
 spec:
-  # TR Saati ile 23:59 (UTC 20:59)
-  schedule: "59 20 * * *"
+  # TR Saati ile 22:00 (UTC 19:00)
+  schedule: "0 19 * * *"
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
   jobTemplate:

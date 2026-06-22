@@ -1033,16 +1033,10 @@ with tab_trend:
         res_hist = requests.get(f"{API_URL}/portfolio/history", timeout=5)
         if res_hist.status_code == 200 and res_hist.json():
             df_hist = pd.DataFrame(res_hist.json())
-            df_hist['record_date'] = pd.to_datetime(df_hist['record_date'])
+            df_plot['record_date'] = pd.to_datetime(df_plot['record_date'])
             df_hist.sort_values('record_date', inplace=True)
 
-            RANGE_BUTTONS = list([
-                dict(count=1,  label="1A",  step="month",  stepmode="backward"),
-                dict(count=3,  label="3A",  step="month",  stepmode="backward"),
-                dict(count=6,  label="6A",  step="month",  stepmode="backward"),
-                dict(count=1,  label="YTD", step="year",   stepmode="todate"),
-                dict(step="all", label="Tümü"),
-            ])
+            
 
             if gosterge != "Karşılaştır":
                 col_map = {
@@ -1053,20 +1047,20 @@ with tab_trend:
                 target_col, line_color, fill_color = col_map[gosterge]
 
                 df_hist['prev_val']    = df_hist[target_col].shift(1)
-                df_hist['daily_change']= df_hist[target_col] - df_hist['prev_val']
-                df_hist['daily_pct']   = (df_hist['daily_change'] / df_hist['prev_val'] * 100).fillna(0)
-                df_hist['daily_change']= df_hist['daily_change'].fillna(0)
+                df_plot['daily_change']= df_hist[target_col] - df_hist['prev_val']
+                df_hist['daily_pct']   = (df_plot['daily_change'] / df_hist['prev_val'] * 100).fillna(0)
+                df_plot['daily_change']= df_plot['daily_change'].fillna(0)
 
                 if target_col == "total_debts":
-                    df_hist['bar_color'] = df_hist['daily_change'].apply(lambda x: '#EF5350' if x > 0 else '#26A69A')
+                    df_plot['bar_color'] = df_plot['daily_change'].apply(lambda x: '#EF5350' if x > 0 else '#26A69A')
                     inc_color = '#EF5350'
                     dec_color = '#26A69A'
                 else:
-                    df_hist['bar_color'] = df_hist['daily_change'].apply(lambda x: '#26A69A' if x >= 0 else '#EF5350')
+                    df_plot['bar_color'] = df_plot['daily_change'].apply(lambda x: '#26A69A' if x >= 0 else '#EF5350')
                     inc_color = '#26A69A'
                     dec_color = '#EF5350'
 
-                df_hist['sma_7'] = df_hist[target_col].rolling(window=7, min_periods=1).mean()
+                df_plot['sma_7'] = df_hist[target_col].rolling(window=7, min_periods=1).mean()
 
                 # --- Sentetik OHLC ve Heikin Ashi Hesaplaması ---
                 df_hist['O'] = df_hist['prev_val'].fillna(df_hist[target_col])
@@ -1079,22 +1073,35 @@ with tab_trend:
                 for i in range(1, len(df_hist)):
                     ha_o.append((ha_o[-1] + ha_c.iloc[i-1]) / 2)
                 
-                df_hist['HA_O'] = ha_o
-                df_hist['HA_C'] = ha_c
-                df_hist['HA_H'] = df_hist[['H', 'HA_O', 'HA_C']].max(axis=1)
-                df_hist['HA_L'] = df_hist[['L', 'HA_O', 'HA_C']].min(axis=1)
+                df_plot['HA_O'] = ha_o
+                df_plot['HA_C'] = ha_c
+                df_plot['HA_H'] = df_hist[['H', 'HA_O', 'HA_C']].max(axis=1)
+                df_plot['HA_L'] = df_hist[['L', 'HA_O', 'HA_C']].min(axis=1)
+
+                                # --- Filtreleme ---
+                min_date = df_plot['record_date'].min().date()
+                max_date = df_plot['record_date'].max().date()
+                import datetime
+                if min_date < max_date:
+                    default_start = max(min_date, max_date - datetime.timedelta(days=180))
+                    st.markdown('<div style="font-size: 0.9rem; margin-top: 1rem; margin-bottom: -1rem; color: var(--text-secondary);">Aşağıdaki çubuğu kaydırarak tarih aralığını belirleyin (Grafik otomatik ölçeklenir):</div>', unsafe_allow_html=True)
+                    selected_dates = st.slider("Tarih Aralığı", min_value=min_date, max_value=max_date, value=(default_start, max_date), format="DD.MM.YYYY", label_visibility="collapsed")
+                    mask = (df_plot['record_date'].dt.date >= selected_dates[0]) & (df_plot['record_date'].dt.date <= selected_dates[1])
+                    df_plot = df_hist[mask].copy()
+                else:
+                    df_plot = df_hist.copy()
 
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                                     vertical_spacing=0.03, row_heights=[0.75, 0.25])
 
                 hover_texts = []
-                for idx, row in df_hist.iterrows():
+                for idx, row in df_plot.iterrows():
                     hover_texts.append(f"<b>{row['record_date'].strftime('%d %b %Y')}</b><br>{gosterge} (Gerçek): ₺{row[target_col]:,.0f}<br>Δ ₺{row['daily_change']:,.0f} ({row['daily_pct']:.2f}%)")
 
                 fig.add_trace(go.Candlestick(
-                    x=df_hist['record_date'],
-                    open=df_hist['HA_O'], high=df_hist['HA_H'],
-                    low=df_hist['HA_L'], close=df_hist['HA_C'],
+                    x=df_plot['record_date'],
+                    open=df_plot['HA_O'], high=df_plot['HA_H'],
+                    low=df_plot['HA_L'], close=df_plot['HA_C'],
                     increasing_line_color=inc_color, decreasing_line_color=dec_color,
                     name=gosterge + ' (HA)',
                     text=hover_texts,
@@ -1102,7 +1109,7 @@ with tab_trend:
                 ), row=1, col=1)
 
                 fig.add_trace(go.Scatter(
-                    x=df_hist['record_date'], y=df_hist['sma_7'],
+                    x=df_plot['record_date'], y=df_plot['sma_7'],
                     mode='lines', line=dict(color='#FFA726', width=1.5, dash='dash'),
                     name='SMA(7)', hovertemplate='<b>%{x|%d %b %Y}</b><br>SMA7: ₺%{y:,.0f}<extra></extra>'
                 ), row=1, col=1)
@@ -1110,25 +1117,36 @@ with tab_trend:
                 fig.update_layout(xaxis_rangeslider_visible=False)
 
                 fig.add_trace(go.Bar(
-                    x=df_hist['record_date'], y=df_hist['daily_change'],
-                    marker_color=df_hist['bar_color'], name='Günlük Δ',
+                    x=df_plot['record_date'], y=df_plot['daily_change'],
+                    marker_color=df_plot['bar_color'], name='Günlük Δ',
                     hovertemplate='<b>%{x|%d %b %Y}</b><br>Δ ₺%{y:,.0f}<extra></extra>'
                 ), row=2, col=1)
 
                 fig.update_xaxes(row=2, col=1,
-                    rangeslider=dict(visible=True, thickness=0.06, bgcolor="rgba(128,128,128,0.08)"),
-                    rangeselector=dict(buttons=RANGE_BUTTONS, bgcolor='rgba(0,0,0,0.08)', font=dict(size=11)),
+                    
                     showgrid=True, gridcolor='rgba(128,128,128,0.1)')
                 fig.update_xaxes(row=1, col=1, showgrid=True, gridcolor='rgba(128,128,128,0.1)')
-                fig.update_yaxes(row=1, col=1, showgrid=True, gridcolor='rgba(128,128,128,0.1)', tickprefix="₺")
-                fig.update_yaxes(row=2, col=1, showgrid=True, gridcolor='rgba(128,128,128,0.1)')
+                fig.update_yaxes(row=1, col=1, showgrid=True, gridcolor='rgba(128,128,128,0.1)', tickprefix="₺", fixedrange=False)
+                fig.update_yaxes(row=2, col=1, showgrid=True, gridcolor='rgba(128,128,128,0.1)', fixedrange=False)
+                
+                
 
             else:
-                # ── İndeksli Karşılaştır (baz = 100) ──────────────────────
-                # Her seriyi başlangıç değerine bölerek normalize ediyoruz.
-                # Böylece farklı ölçekteki (₺500k varlık, ₺100k borç) seriler
-                # aynı eksende anlamlı biçimde karşılaştırılabilir.
+                                # ── İndeksli Karşılaştır (baz = 100) ──────────────────────
+                min_date = df_hist['record_date'].min().date()
+                max_date = df_hist['record_date'].max().date()
+                import datetime
+                if min_date < max_date:
+                    default_start = max(min_date, max_date - datetime.timedelta(days=180))
+                    st.markdown('<div style="font-size: 0.9rem; margin-top: 1rem; margin-bottom: -1rem; color: var(--text-secondary);">Aşağıdaki çubuğu kaydırarak tarih aralığını belirleyin (Grafik otomatik ölçeklenir):</div>', unsafe_allow_html=True)
+                    selected_dates = st.slider("Tarih Aralığı", min_value=min_date, max_value=max_date, value=(default_start, max_date), format="DD.MM.YYYY", label_visibility="collapsed")
+                    mask = (df_hist['record_date'].dt.date >= selected_dates[0]) & (df_hist['record_date'].dt.date <= selected_dates[1])
+                    df_plot = df_hist[mask].copy()
+                else:
+                    df_plot = df_hist.copy()
+
                 SERIES = [
+
                     ("total_assets", "#2962FF", "Toplam Varlık", "rgba(41,98,255,0.08)"),
                     ("net_worth",    "#26A69A", "Net Servet",    "rgba(38,166,154,0.08)"),
                     ("total_debts",  "#EF5350", "Toplam Borç",   "rgba(239,83,80,0.06)"),
@@ -1137,15 +1155,15 @@ with tab_trend:
                 fig = go.Figure()
 
                 for col, color, name, fill_color in SERIES:
-                    base = df_hist[col].iloc[0]
+                    base = df_plot[col].iloc[0]
                     if base == 0:
                         continue
-                    indexed   = (df_hist[col] / base) * 100          # baz=100
-                    actual    = df_hist[col]                           # hover için gerçek değer
+                    indexed   = (df_plot[col] / base) * 100          # baz=100
+                    actual    = df_plot[col]                           # hover için gerçek değer
                     pct_chg   = indexed - 100                         # başlangıçtan % değişim
 
                     fig.add_trace(go.Scatter(
-                        x=df_hist['record_date'],
+                        x=df_plot['record_date'],
                         y=indexed,
                         mode='lines',
                         fill='tozeroy',
@@ -1172,8 +1190,7 @@ with tab_trend:
 
                 fig.update_layout(
                     xaxis=dict(
-                        rangeslider=dict(visible=True, thickness=0.06, bgcolor="rgba(128,128,128,0.08)"),
-                        rangeselector=dict(buttons=RANGE_BUTTONS, bgcolor='rgba(0,0,0,0.08)', font=dict(size=11)),
+                        
                         showgrid=True, gridcolor='rgba(128,128,128,0.1)'
                     ),
                     yaxis=dict(

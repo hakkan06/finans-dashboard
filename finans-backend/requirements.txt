@@ -3,5 +3,5 @@ uvicorn
 sqlalchemy
 psycopg2-binary
 yfinance
-tefas-crawler
+tefas-crawler==0.6.0
 python-dateutil
