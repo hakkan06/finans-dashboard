@@ -1033,7 +1033,7 @@ with tab_trend:
         res_hist = requests.get(f"{API_URL}/portfolio/history", timeout=5)
         if res_hist.status_code == 200 and res_hist.json():
             df_hist = pd.DataFrame(res_hist.json())
-            df_plot['record_date'] = pd.to_datetime(df_plot['record_date'])
+            df_hist['record_date'] = pd.to_datetime(df_hist['record_date'])
             df_hist.sort_values('record_date', inplace=True)
 
             
@@ -1047,20 +1047,20 @@ with tab_trend:
                 target_col, line_color, fill_color = col_map[gosterge]
 
                 df_hist['prev_val']    = df_hist[target_col].shift(1)
-                df_plot['daily_change']= df_hist[target_col] - df_hist['prev_val']
-                df_hist['daily_pct']   = (df_plot['daily_change'] / df_hist['prev_val'] * 100).fillna(0)
-                df_plot['daily_change']= df_plot['daily_change'].fillna(0)
+                df_hist['daily_change']= df_hist[target_col] - df_hist['prev_val']
+                df_hist['daily_pct']   = (df_hist['daily_change'] / df_hist['prev_val'] * 100).fillna(0)
+                df_hist['daily_change']= df_hist['daily_change'].fillna(0)
 
                 if target_col == "total_debts":
-                    df_plot['bar_color'] = df_plot['daily_change'].apply(lambda x: '#EF5350' if x > 0 else '#26A69A')
+                    df_hist['bar_color'] = df_hist['daily_change'].apply(lambda x: '#EF5350' if x > 0 else '#26A69A')
                     inc_color = '#EF5350'
                     dec_color = '#26A69A'
                 else:
-                    df_plot['bar_color'] = df_plot['daily_change'].apply(lambda x: '#26A69A' if x >= 0 else '#EF5350')
+                    df_hist['bar_color'] = df_hist['daily_change'].apply(lambda x: '#26A69A' if x >= 0 else '#EF5350')
                     inc_color = '#26A69A'
                     dec_color = '#EF5350'
 
-                df_plot['sma_7'] = df_hist[target_col].rolling(window=7, min_periods=1).mean()
+                df_hist['sma_7'] = df_hist[target_col].rolling(window=7, min_periods=1).mean()
 
                 # --- Sentetik OHLC ve Heikin Ashi Hesaplaması ---
                 df_hist['O'] = df_hist['prev_val'].fillna(df_hist[target_col])
@@ -1073,20 +1073,20 @@ with tab_trend:
                 for i in range(1, len(df_hist)):
                     ha_o.append((ha_o[-1] + ha_c.iloc[i-1]) / 2)
                 
-                df_plot['HA_O'] = ha_o
-                df_plot['HA_C'] = ha_c
-                df_plot['HA_H'] = df_hist[['H', 'HA_O', 'HA_C']].max(axis=1)
-                df_plot['HA_L'] = df_hist[['L', 'HA_O', 'HA_C']].min(axis=1)
+                df_hist['HA_O'] = ha_o
+                df_hist['HA_C'] = ha_c
+                df_hist['HA_H'] = df_hist[['H', 'HA_O', 'HA_C']].max(axis=1)
+                df_hist['HA_L'] = df_hist[['L', 'HA_O', 'HA_C']].min(axis=1)
 
                                 # --- Filtreleme ---
-                min_date = df_plot['record_date'].min().date()
-                max_date = df_plot['record_date'].max().date()
+                min_date = df_hist['record_date'].min().date()
+                max_date = df_hist['record_date'].max().date()
                 import datetime
                 if min_date < max_date:
                     default_start = max(min_date, max_date - datetime.timedelta(days=180))
                     st.markdown('<div style="font-size: 0.9rem; margin-top: 1rem; margin-bottom: -1rem; color: var(--text-secondary);">Aşağıdaki çubuğu kaydırarak tarih aralığını belirleyin (Grafik otomatik ölçeklenir):</div>', unsafe_allow_html=True)
                     selected_dates = st.slider("Tarih Aralığı", min_value=min_date, max_value=max_date, value=(default_start, max_date), format="DD.MM.YYYY", label_visibility="collapsed")
-                    mask = (df_plot['record_date'].dt.date >= selected_dates[0]) & (df_plot['record_date'].dt.date <= selected_dates[1])
+                    mask = (df_hist['record_date'].dt.date >= selected_dates[0]) & (df_hist['record_date'].dt.date <= selected_dates[1])
                     df_plot = df_hist[mask].copy()
                 else:
                     df_plot = df_hist.copy()
