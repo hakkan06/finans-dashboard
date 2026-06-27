@@ -30,31 +30,31 @@ jobs:
         run: |
           cd finans-backend
           docker build -t finans-backend:${{ github.sha }} -t finans-backend:latest .
-
-          # 🚀 YENİ: Derlenen imajı doğrudan K3s'in içine aktar
+          # Derlenen imajı K3s'in containerd motoruna enjekte et (ImagePullBackOff hatasını önler)
           docker save finans-backend:${{ github.sha }} finans-backend:latest | sudo k3s ctr images import -
-
 
       - name: Frontend imajını derle
         run: |
           cd finans-frontend
           docker build -t finans-frontend:${{ github.sha }} -t finans-frontend:latest .
-
-          # 🚀 YENİ: Derlenen imajı doğrudan K3s'in içine aktar
+          # Derlenen imajı K3s'in containerd motoruna enjekte et (ImagePullBackOff hatasını önler)
           docker save finans-frontend:${{ github.sha }} finans-frontend:latest | sudo k3s ctr images import -
 
       - name: Kubernetes'e deploy et
         run: |
-          # 🚀 1. ADIM: İSKELETLERİ KÖK DİZİNDEN UYGULA (Klasör ekleri kaldırıldı)
+          # 🚀 1. TÜM K8S BİLEŞENLERİNİ K8S KLASÖRÜNDEN OTONOM UYGULA
+          kubectl apply -f k8s/postgres.yaml
           kubectl apply -f k8s/backend.yaml
           kubectl apply -f k8s/frontend.yaml
+          kubectl apply -f k8s/cronjob.yaml
+          kubectl apply -f k8s/ingress.yaml
           
-          # 🔄 2. ADIM: TAZE DERLENEN DOCKER İMAJLARINI BU İSKELETLERE BAS
+          # 🔄 2. TAZE DERLENEN DOCKER İMAJLARINI BU İSKELETLERE BAS
           kubectl set image deployment/finans-backend-deployment \
             finans-backend=finans-backend:${{ github.sha }}
           kubectl set image deployment/finans-frontend-deployment \
             finans-frontend=finans-frontend:${{ github.sha }}
           
-          # ⏱️ 3. ADIM: ROLLOUT DURUMUNU TAKİP ET
+          # ⏱️ 3. ROLLOUT DURUMUNU TAKİP ET
           kubectl rollout status deployment/finans-backend-deployment
           kubectl rollout status deployment/finans-frontend-deployment
