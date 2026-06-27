@@ -31,10 +31,17 @@ jobs:
           cd finans-backend
           docker build -t finans-backend:${{ github.sha }} -t finans-backend:latest .
 
+          # 🚀 YENİ: Derlenen imajı doğrudan K3s'in içine aktar
+          docker save finans-backend:${{ github.sha }} finans-backend:latest | sudo k3s ctr images import -
+
+
       - name: Frontend imajını derle
         run: |
           cd finans-frontend
           docker build -t finans-frontend:${{ github.sha }} -t finans-frontend:latest .
+
+          # 🚀 YENİ: Derlenen imajı doğrudan K3s'in içine aktar
+          docker save finans-frontend:${{ github.sha }} finans-frontend:latest | sudo k3s ctr images import -
 
       - name: Kubernetes'e deploy et
         run: |
