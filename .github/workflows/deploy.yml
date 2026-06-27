@@ -38,9 +38,18 @@ jobs:
 
       - name: Kubernetes'e deploy et
         run: |
+          # 🚀 1. ADIM: EĞER SİSTEMDE YOKSA ÖNCE İSKELETLERİ (DEPLOYMENT VE SERVICE) OLUŞTUR
+          # Projenin ana klasör yapısına göre backend ve frontend altındaki yaml'ları apply ediyoruz.
+          # Eğer bu dosyalar ana dizindeyse yolunu değiştirebilirsin (Örn: kubectl apply -f backend.yaml)
+          kubectl apply -f finans-backend/backend.yaml
+          kubectl apply -f finans-frontend/frontend.yaml
+          
+          # 🔄 2. ADIM: TAZE DERLENEN DOCKER İMAJLARINI BU İSKELETLERE BAS
           kubectl set image deployment/finans-backend-deployment \
             finans-backend=finans-backend:${{ github.sha }}
           kubectl set image deployment/finans-frontend-deployment \
             finans-frontend=finans-frontend:${{ github.sha }}
+          
+          # ⏱️ 3. ADIM: SİSTEMİN SAĞLIKLI BİR ŞEKİLDE AYAĞA KALKMASINI BEKLE (ROLLOUT)
           kubectl rollout status deployment/finans-backend-deployment
           kubectl rollout status deployment/finans-frontend-deployment
