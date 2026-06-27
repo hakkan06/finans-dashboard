@@ -10,7 +10,7 @@ env:
 
 jobs:
   build-and-deploy:
-    runs-on: self-hosted
+    runs-on: [self-hosted, vmi3402698]
     steps:
       - name: Workspace temizle
         continue-on-error: true
