@@ -5,7 +5,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-  - host: finans.local
+  - host: finans.185.229.119.58.nip.io
     http:
       paths:
       - path: /
@@ -15,7 +15,7 @@ spec:
             name: finans-frontend-service
             port:
               number: 8501
-  - host: api.finans.local
+  - host: api.185.229.119.58.nip.io
     http:
       paths:
       - path: /
