@@ -39,8 +39,8 @@ jobs:
       - name: Kubernetes'e deploy et
         run: |
           # 🚀 1. ADIM: İSKELETLERİ KÖK DİZİNDEN UYGULA (Klasör ekleri kaldırıldı)
-          kubectl apply -f backend.yaml
-          kubectl apply -f frontend.yaml
+          kubectl apply -f k8s/backend.yaml
+          kubectl apply -f k8s/frontend.yaml
           
           # 🔄 2. ADIM: TAZE DERLENEN DOCKER İMAJLARINI BU İSKELETLERE BAS
           kubectl set image deployment/finans-backend-deployment \
