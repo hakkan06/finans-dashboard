@@ -12,7 +12,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: "/Users/hakan/Desktop/kubernetes/finans-projesi/db-storage"
+    path: "/opt/finans-projesi/db-storage"
 
 ---
 # 1. Disk Alanı Talebi (Persistent Volume Claim)
