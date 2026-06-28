@@ -404,10 +404,10 @@ st.markdown(f"""
         <div class="kpi-value {net_color}">₺ {net_worth:,.0f}</div>
         <div class="kpi-sub">{net_sign}{(net_worth/global_total_assets*100) if global_total_assets else 0:.1f}% oran</div>
     </div>
-    <a class="kpi-mood" href="http://localhost:8080" target="_blank">
+    <a class="kpi-mood" href="https://mood.185.229.119.58.nip.io" target="_blank">
         <div class="kpi-label">📔 MoodDiary</div>
         <div class="kpi-value">Günlük Tut</div>
-        <div class="kpi-sub">localhost:8080 ↗</div>
+        <div class="kpi-sub">mood.185.229.119.58.nip.io ↗</div>
     </a>
 </div>
 """, unsafe_allow_html=True)
