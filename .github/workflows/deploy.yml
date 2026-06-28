@@ -42,7 +42,14 @@ jobs:
 
       - name: Kubernetes'e deploy et
         run: |
+          # 🔒 0. GÜVENLİK BİLEŞENLERİNİ KUR (Cert-Manager ve CRDs)
+          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
+          # Webhook'un ayağa kalkmasını bekle (ClusterIssuer nesnelerinin doğrulanabilmesi için)
+          kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout=90s
+
           # 🚀 1. TÜM K8S BİLEŞENLERİNİ K8S KLASÖRÜNDEN OTONOM UYGULA
+          kubectl apply -f k8s/auth-middleware.yaml
+          kubectl apply -f k8s/cluster-issuer.yaml
           kubectl apply -f k8s/postgres.yaml
           kubectl apply -f k8s/backend.yaml
           kubectl apply -f k8s/frontend.yaml

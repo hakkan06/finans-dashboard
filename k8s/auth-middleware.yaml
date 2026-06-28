@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: finans-auth-secret
+  namespace: default
+type: Opaque
+stringData:
+  users: |
+    admin:$apr1$kj9Zyhr8$P2U.NMzKyDge302AbGqT6/
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: finans-basic-auth
+  namespace: default
+spec:
+  basicAuth:
+    secret: finans-auth-secret
