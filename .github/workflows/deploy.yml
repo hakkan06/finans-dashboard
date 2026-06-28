@@ -37,14 +37,18 @@ jobs:
         run: |
           cd finans-frontend
           docker build -t finans-frontend:${{ github.sha }} -t finans-frontend:latest .
-          # Derlenen imajı K3s'in containerd motoruna enjekte et (ImagePullBackOff hatasını önler)
           docker save finans-frontend:${{ github.sha }} finans-frontend:latest | sudo k3s ctr images import -
+
+      - name: Backup imajını derle
+        run: |
+          cd db-backup
+          docker build -t db-backup:${{ github.sha }} -t db-backup:latest .
+          docker save db-backup:${{ github.sha }} db-backup:latest | sudo k3s ctr images import -
 
       - name: Kubernetes'e deploy et
         run: |
           # 🔒 0. GÜVENLİK BİLEŞENLERİNİ KUR (Cert-Manager ve CRDs)
           kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
-          # Webhook'un ayağa kalkmasını bekle (ClusterIssuer nesnelerinin doğrulanabilmesi için)
           kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout=90s
 
           # 🚀 1. TÜM K8S BİLEŞENLERİNİ K8S KLASÖRÜNDEN OTONOM UYGULA
@@ -55,12 +59,15 @@ jobs:
           kubectl apply -f k8s/frontend.yaml
           kubectl apply -f k8s/cronjob.yaml
           kubectl apply -f k8s/ingress.yaml
+          kubectl apply -f k8s/backup-cronjob.yaml
           
           # 🔄 2. TAZE DERLENEN DOCKER İMAJLARINI BU İSKELETLERE BAS
           kubectl set image deployment/finans-backend-deployment \
             finans-backend=finans-backend:${{ github.sha }}
           kubectl set image deployment/finans-frontend-deployment \
             finans-frontend=finans-frontend:${{ github.sha }}
+          kubectl set image cronjob/database-gdrive-backup \
+            db-backup=db-backup:${{ github.sha }} || true
           
           # ⏱️ 3. ROLLOUT DURUMUNU TAKİP ET
           kubectl rollout status deployment/finans-backend-deployment

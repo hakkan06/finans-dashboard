@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: database-gdrive-backup
+  namespace: default
+spec:
+  # TR Saati ile 03:00 (UTC 00:00)
+  schedule: "0 0 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: db-backup
+            image: db-backup:latest
+            imagePullPolicy: IfNotPresent
+            env:
+            # Finans DB Env
+            - name: FINANS_DB_USER
+              value: "postgres"
+            - name: FINANS_DB_PASSWORD
+              value: "finanssecure123"
+            - name: FINANS_DB_NAME
+              value: "finans_db"
+            # Mooddiary DB Env
+            - name: MOODDIARY_DB_USER
+              value: "postgres"
+            - name: MOODDIARY_DB_PASSWORD
+              value: "moodsecure123"
+            - name: MOODDIARY_DB_NAME
+              value: "mooddiary"
+            volumeMounts:
+            - name: rclone-config-volume
+              mountPath: /root/.config/rclone
+              readOnly: true
+          volumes:
+          - name: rclone-config-volume
+            secret:
+              secretName: rclone-config
+          restartPolicy: OnFailure
