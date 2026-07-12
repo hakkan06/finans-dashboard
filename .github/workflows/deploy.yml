@@ -52,7 +52,6 @@ jobs:
           kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout=90s
 
           # 🚀 1. TÜM K8S BİLEŞENLERİNİ K8S KLASÖRÜNDEN OTONOM UYGULA
-          kubectl apply -f k8s/auth-middleware.yaml
           kubectl apply -f k8s/cluster-issuer.yaml
           kubectl apply -f k8s/postgres.yaml
           kubectl apply -f k8s/backend.yaml
