@@ -14,3 +14,4 @@ jobs:
           sleep 30
           kubectl logs -l job-name=$JOB_NAME
           kubectl delete job $JOB_NAME
+# trigger 1783870075
