@@ -19,9 +19,9 @@ spec:
             env:
             # Finans DB Env
             - name: FINANS_DB_USER
-              value: "postgres"
+              value: "finans_user"
             - name: FINANS_DB_PASSWORD
-              value: "finanssecure123"
+              value: "finans_pass"
             - name: FINANS_DB_NAME
               value: "finans_db"
             # Mooddiary DB Env
