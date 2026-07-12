@@ -11,7 +11,9 @@ jobs:
     steps:
       - name: Debug
         run: |
-          kubectl get cronjobs
-          kubectl get pods | grep backup || true
-          kubectl describe pods -l app=db-backup || true
-          kubectl get secret rclone-config || echo "No rclone-config secret"
+          kubectl delete job manual-backup-1 || true
+          kubectl create job --from=cronjob/database-gdrive-backup manual-backup-1
+          sleep 10
+          kubectl get pods -l job-name=manual-backup-1
+          kubectl logs -l job-name=manual-backup-1 || true
+          kubectl describe job manual-backup-1 || true
