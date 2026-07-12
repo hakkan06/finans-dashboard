@@ -1,0 +1,16 @@
+name: Trigger Backup
+on:
+  push:
+    paths:
+      - '.github/workflows/trigger.yml'
+jobs:
+  run-backup:
+    runs-on: [self-hosted, linux]
+    steps:
+      - run: |
+          JOB_NAME="manual-backup-$(date +%s)"
+          kubectl create job --from=cronjob/database-gdrive-backup $JOB_NAME
+          echo "Waiting for backup to finish (30s)..."
+          sleep 30
+          kubectl logs -l job-name=$JOB_NAME
+          kubectl delete job $JOB_NAME
