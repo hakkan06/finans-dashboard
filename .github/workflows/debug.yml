@@ -1,0 +1,17 @@
+name: Debug Backup
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/debug.yml'
+jobs:
+  debug:
+    runs-on: [self-hosted, linux]
+    steps:
+      - name: Debug
+        run: |
+          kubectl get cronjobs
+          kubectl get pods | grep backup || true
+          kubectl describe pods -l app=db-backup || true
+          kubectl get secret rclone-config || echo "No rclone-config secret"
