@@ -22,7 +22,8 @@ tar -czvf "vps_databases_$DATE.tar.gz" -C "$BACKUP_DIR" .
 
 # 4. Upload to Google Drive using rclone
 echo "Uploading to Google Drive..."
-# The rclone.conf is mounted at /root/.config/rclone/rclone.conf
-rclone copy "vps_databases_$DATE.tar.gz" grive:/VPS_Backups/
+# The rclone.conf is mounted as read-only. Copy to /tmp to allow rclone to update tokens in-memory.
+cp /root/.config/rclone/rclone.conf /tmp/rclone.conf
+rclone --config /tmp/rclone.conf copy "vps_databases_$DATE.tar.gz" grive:/VPS_Backups/
 
 echo "[$DATE] Backup completed successfully!"
