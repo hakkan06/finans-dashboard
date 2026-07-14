@@ -283,9 +283,14 @@ usd_try_rate = get_cached_usd_rate()
 global_total_assets = 0.0
 global_total_debts   = 0.0
 summary_data = []
+all_assets = []
 debts = []
 
 try:
+    res_all = requests.get(f"{API_URL}/assets/", timeout=5)
+    if res_all.status_code == 200:
+        all_assets = res_all.json()
+
     res_assets = requests.get(f"{API_URL}/portfolio/summary", timeout=5)
     if res_assets.status_code == 200:
         summary_data = res_assets.json()
@@ -579,9 +584,9 @@ with tab_portfoy:
 
     with exp_col1:
         with st.expander("📥 Alım / Satım Kaydet", expanded=False):
-            if summary_data:
+            if all_assets:
                 with st.form("txn_form"):
-                    asset_options = {f"{a.get('symbol')} — {a.get('name')}": a.get('asset_id') for a in summary_data}
+                    asset_options = {f"{a.get('symbol')} — {a.get('name')}": a.get('id') for a in all_assets}
                     selected_asset = st.selectbox("Varlık", options=list(asset_options.keys()), label_visibility="collapsed")
                     c1, c2 = st.columns(2)
                     with c1:
@@ -618,12 +623,14 @@ with tab_portfoy:
                         st.toast("✅ Varlık eklendi!")
                         time.sleep(0.8)
                         st.rerun()
+                    else:
+                        st.error(res.json().get("detail", "Varlık eklenemedi."))
 
     with exp_col3:
         with st.expander("🗑️ Varlık Sil", expanded=False):
-            if summary_data:
+            if all_assets:
                 with st.form("del_asset_form"):
-                    del_opts = {f"{a.get('symbol')} — {a.get('name')}": a.get('asset_id') for a in summary_data}
+                    del_opts = {f"{a.get('symbol')} — {a.get('name')}": a.get('id') for a in all_assets}
                     selected_del = st.selectbox("Varlık", options=list(del_opts.keys()), label_visibility="collapsed")
                     onay = st.checkbox("İşlemi ve geçmişi kalıcı sil")
                     if st.form_submit_button("Sil", use_container_width=True):

@@ -219,13 +219,19 @@ def get_portfolio_summary(db: Session = Depends(get_db)):
     return summary
 
 
+from sqlalchemy.exc import IntegrityError
+
 @app.post("/assets/", response_model=schemas.AssetResponse)
 def create_asset(asset: schemas.AssetCreate, db: Session = Depends(get_db)):
     db_asset = models.Asset(**asset.dict())
     db.add(db_asset)
-    db.commit()
-    db.refresh(db_asset)
-    return db_asset
+    try:
+        db.commit()
+        db.refresh(db_asset)
+        return db_asset
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Bu sembole sahip varlık zaten sistemde mevcut.")
 
 
 @app.get("/assets/", response_model=list[schemas.AssetResponse])
