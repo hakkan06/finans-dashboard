@@ -1051,7 +1051,7 @@ with tab_trend:
                 continue
             due = pd.to_datetime(inst['due_date']).date()
             key = (due.year, due.month)
-            if key in dict(ay_listesi):  # sadece 12 ay içindeyse
+            if key in set(ay_listesi):  # sadece 12 ay içindeyse
                 ay_toplam[key]   = ay_toplam.get(key, 0.0) + inst['amount']
                 ay_detaylar.setdefault(key, []).append((d['name'], inst['amount']))
 
