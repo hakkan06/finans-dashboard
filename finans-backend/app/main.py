@@ -50,7 +50,9 @@ def run_daily_job(background_tasks: BackgroundTasks, db: Session = Depends(get_d
     try:
         usd_hist = yf.Ticker("TRY=X").history(period="5d")
         if not usd_hist.empty:
-            usd_try = float(usd_hist["Close"].iloc[-1])
+            _usd_valid = usd_hist["Close"].dropna()
+            if not _usd_valid.empty:
+                usd_try = float(_usd_valid.iloc[-1])
     except:
         pass
 
@@ -269,6 +271,16 @@ def update_asset_prices(db: Session = Depends(get_db)):
 
     for asset in assets:
         try:
+            upper_symbol = asset.symbol.strip().upper()
+            
+            # Akıllı Eşleştirici: Altın ve gümüş türevlerini otomatik olarak COMMODITY (Emtia) tipine çevir
+            if upper_symbol in ["ALTIN", "XAU", "GRAMALTIN", "GOLD", "GRAM-ALTIN", "GLD"]:
+                if asset.asset_type != "COMMODITY":
+                    asset.asset_type = "COMMODITY"
+            elif upper_symbol in ["GUMUS", "XAG", "GRAMGUMUS", "SILVER", "GRAM-GUMUS", "SLV"]:
+                if asset.asset_type != "COMMODITY":
+                    asset.asset_type = "COMMODITY"
+                    
             if asset.asset_type == "US_STOCK":
                 hist = yf.Ticker(asset.symbol).history(period="7d")
                 if not hist.empty and "Close" in hist:
@@ -315,22 +327,25 @@ def update_asset_prices(db: Session = Depends(get_db)):
 
             elif asset.asset_type == "COMMODITY":
                 usd_try_hist = yf.Ticker("TRY=X").history(period="5d")
-                if not usd_try_hist.empty:
-                    usd_try = float(usd_try_hist["Close"].iloc[-1])
-                    if asset.symbol.upper() in ["ALTIN", "XAU", "GRAMALTIN"]:
+                usd_try_valid = usd_try_hist["Close"].dropna() if not usd_try_hist.empty else None
+                if usd_try_valid is not None and not usd_try_valid.empty:
+                    usd_try = float(usd_try_valid.iloc[-1])
+                    if upper_symbol in ["ALTIN", "XAU", "GRAMALTIN", "GOLD", "GRAM-ALTIN", "GLD"]:
                         xau_hist = yf.Ticker("GC=F").history(period="5d")
-                        if not xau_hist.empty:
-                            if len(xau_hist) > 1 and len(usd_try_hist) > 1:
-                                asset.previous_price = (float(xau_hist["Close"].iloc[-2]) * float(usd_try_hist["Close"].iloc[-2])) / 31.1034768
-                            asset.current_price = (float(xau_hist["Close"].iloc[-1]) * usd_try) / 31.1034768
+                        xau_valid = xau_hist["Close"].dropna() if not xau_hist.empty else None
+                        if xau_valid is not None and not xau_valid.empty:
+                            if len(xau_valid) > 1 and len(usd_try_valid) > 1:
+                                asset.previous_price = (float(xau_valid.iloc[-2]) * float(usd_try_valid.iloc[-2])) / 31.1034768
+                            asset.current_price = (float(xau_valid.iloc[-1]) * usd_try) / 31.1034768
                             asset.last_updated = datetime.now(TR_TZ)
                             updated_count += 1
-                    elif asset.symbol.upper() in ["GUMUS", "XAG", "GRAMGUMUS"]:
+                    elif upper_symbol in ["GUMUS", "XAG", "GRAMGUMUS", "SILVER", "GRAM-GUMUS", "SLV"]:
                         xag_hist = yf.Ticker("SI=F").history(period="5d")
-                        if not xag_hist.empty:
-                            if len(xag_hist) > 1 and len(usd_try_hist) > 1:
-                                asset.previous_price = (float(xag_hist["Close"].iloc[-2]) * float(usd_try_hist["Close"].iloc[-2])) / 31.1034768
-                            asset.current_price = (float(xag_hist["Close"].iloc[-1]) * usd_try) / 31.1034768
+                        xag_valid = xag_hist["Close"].dropna() if not xag_hist.empty else None
+                        if xag_valid is not None and not xag_valid.empty:
+                            if len(xag_valid) > 1 and len(usd_try_valid) > 1:
+                                asset.previous_price = (float(xag_valid.iloc[-2]) * float(usd_try_valid.iloc[-2])) / 31.1034768
+                            asset.current_price = (float(xag_valid.iloc[-1]) * usd_try) / 31.1034768
                             asset.last_updated = datetime.now(TR_TZ)
                             updated_count += 1
 
@@ -342,18 +357,20 @@ def update_asset_prices(db: Session = Depends(get_db)):
                     updated_count += 1
                 elif asset.symbol.upper() in ["USD", "DOLAR"]:
                     usd_hist = yf.Ticker("TRY=X").history(period="5d")
-                    if not usd_hist.empty:
-                        if len(usd_hist) > 1:
-                            asset.previous_price = float(usd_hist["Close"].iloc[-2])
-                        asset.current_price = float(usd_hist["Close"].iloc[-1])
+                    usd_valid = usd_hist["Close"].dropna() if not usd_hist.empty else None
+                    if usd_valid is not None and not usd_valid.empty:
+                        if len(usd_valid) > 1:
+                            asset.previous_price = float(usd_valid.iloc[-2])
+                        asset.current_price = float(usd_valid.iloc[-1])
                         asset.last_updated = datetime.now(TR_TZ)
                         updated_count += 1
                 elif asset.symbol.upper() in ["EUR", "EURO"]:
                     eur_hist = yf.Ticker("EURTRY=X").history(period="5d")
-                    if not eur_hist.empty:
-                        if len(eur_hist) > 1:
-                            asset.previous_price = float(eur_hist["Close"].iloc[-2])
-                        asset.current_price = float(eur_hist["Close"].iloc[-1])
+                    eur_valid = eur_hist["Close"].dropna() if not eur_hist.empty else None
+                    if eur_valid is not None and not eur_valid.empty:
+                        if len(eur_valid) > 1:
+                            asset.previous_price = float(eur_valid.iloc[-2])
+                        asset.current_price = float(eur_valid.iloc[-1])
                         asset.last_updated = datetime.now(TR_TZ)
                         updated_count += 1
 
