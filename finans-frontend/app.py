@@ -1026,6 +1026,148 @@ with tab_trend:
 
     st.divider()
 
+    # ── 12 Aylık Nakit Akışı Takvimi ──────────────────────────────────
+    st.markdown('<div class="section-title">Önümüzdeki 12 Ay — Nakit Akışı Takvimi</div>', unsafe_allow_html=True)
+
+    import calendar
+    from datetime import date as _date
+
+    _today = _date.today()
+
+    # Önümüzdeki 12 ayı oluştur
+    ay_listesi = []
+    for i in range(12):
+        m = (_today.month - 1 + i) % 12 + 1
+        y = _today.year + (_today.month - 1 + i) // 12
+        ay_listesi.append((y, m))
+
+    # Her ay için borç toplamını hesapla, detay listesi tut
+    ay_toplam   = {}   # (y, m) -> toplam tutar
+    ay_detaylar = {}   # (y, m) -> [(borç adı, tutar), ...]
+
+    for d in debts:
+        for inst in d.get('installments', []):
+            if inst['is_paid']:
+                continue
+            due = pd.to_datetime(inst['due_date']).date()
+            key = (due.year, due.month)
+            if key in dict(ay_listesi):  # sadece 12 ay içindeyse
+                ay_toplam[key]   = ay_toplam.get(key, 0.0) + inst['amount']
+                ay_detaylar.setdefault(key, []).append((d['name'], inst['amount']))
+
+    # Grafik verilerini hazırla
+    ay_etiketler = []
+    ay_tutarlar  = []
+    ay_renkler   = []
+    ay_hover     = []
+
+    ay_isimleri_tr = ["Oca", "Şub", "Mar", "Nis", "May", "Haz",
+                      "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"]
+
+    # Renk eşiği için referans: max tutarın %60 ve %30'u
+    maks = max(ay_toplam.values()) if ay_toplam else 1
+
+    for (y, m) in ay_listesi:
+        etiket = f"{ay_isimleri_tr[m-1]} '{str(y)[2:]}"
+        tutar  = ay_toplam.get((y, m), 0.0)
+        detay  = ay_detaylar.get((y, m), [])
+
+        ay_etiketler.append(etiket)
+        ay_tutarlar.append(tutar)
+
+        # Renk: yüksek yük → kırmızı, orta → turuncu, düşük/sıfır → mavi
+        oran = tutar / maks if maks > 0 else 0
+        if oran >= 0.6:
+            renk = "rgba(239,83,80,0.80)"
+        elif oran >= 0.25:
+            renk = "rgba(255,167,38,0.75)"
+        else:
+            renk = "rgba(41,98,255,0.65)"
+        ay_renkler.append(renk)
+
+        # Hover metni
+        if detay:
+            satirlar = "<br>".join(
+                f"  · {ad}: ₺{miktar:,.0f}" for ad, miktar in sorted(detay, key=lambda x: -x[1])
+            )
+            hover_txt = f"<b>{etiket}</b><br>Toplam: ₺{tutar:,.0f}<br>{satirlar}<extra></extra>"
+        else:
+            hover_txt = f"<b>{etiket}</b><br>Ödeme yok ✓<extra></extra>"
+        ay_hover.append(hover_txt)
+
+    # Şimdiki ay çerçevesi için index bul
+    bugun_key = (_today.year, _today.month)
+    bugun_idx = next((i for i, k in enumerate(ay_listesi) if k == bugun_key), None)
+
+    fig_nakit = go.Figure()
+
+    fig_nakit.add_trace(go.Bar(
+        x=ay_etiketler,
+        y=ay_tutarlar,
+        marker_color=ay_renkler,
+        marker_line_width=0,
+        hovertemplate=ay_hover,
+        name="Aylık Taksit Yükü",
+    ))
+
+    # Şimdiki ayı vurgula
+    if bugun_idx is not None and ay_tutarlar[bugun_idx] > 0:
+        fig_nakit.add_annotation(
+            x=ay_etiketler[bugun_idx],
+            y=ay_tutarlar[bugun_idx],
+            text="← Bu ay",
+            showarrow=False,
+            font=dict(size=11, color="#FFA726"),
+            yshift=12,
+            xshift=0,
+        )
+
+    # Ortalama çizgisi
+    odeme_olan = [t for t in ay_tutarlar if t > 0]
+    if odeme_olan:
+        ort = sum(odeme_olan) / len(odeme_olan)
+        fig_nakit.add_hline(
+            y=ort,
+            line=dict(color="rgba(128,128,128,0.4)", width=1, dash="dot"),
+            annotation_text=f"Ort. ₺{ort:,.0f}",
+            annotation_position="bottom right",
+            annotation_font=dict(size=10, color="rgba(128,128,128,0.6)"),
+        )
+
+    fig_nakit.update_layout(
+        margin=dict(l=0, r=0, t=10, b=0),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(showgrid=False, tickfont=dict(size=11)),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor="rgba(128,128,128,0.1)",
+            tickprefix="₺",
+            tickformat=",.0f",
+        ),
+        hovermode="x",
+        font=dict(family="Inter"),
+        showlegend=False,
+        height=260,
+    )
+
+    st.plotly_chart(fig_nakit, use_container_width=True, config={"displayModeBar": False})
+
+    # Özet satırı
+    toplam_12ay = sum(ay_tutarlar)
+    aylik_ort   = sum(odeme_olan) / len(odeme_olan) if odeme_olan else 0
+    en_agir     = max(zip(ay_tutarlar, ay_etiketler), key=lambda x: x[0]) if any(ay_tutarlar) else (0, "—")
+
+    _c1, _c2, _c3 = st.columns(3)
+    with _c1:
+        st.metric("12 Ay Toplam Yük", f"₺ {toplam_12ay:,.0f}")
+    with _c2:
+        st.metric("Aylık Ortalama", f"₺ {aylik_ort:,.0f}")
+    with _c3:
+        st.metric("En Ağır Ay", en_agir[1], delta=f"₺ {en_agir[0]:,.0f}", delta_color="inverse")
+
+    st.divider()
+
     # ── Tarihsel Grafik ──
     st.markdown('<div class="section-title">Tarihsel Büyüme Grafiği</div>', unsafe_allow_html=True)
 

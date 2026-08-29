@@ -11,6 +11,16 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
+import logging
+
+# ── Logging Yapılandırması ────────────────────────────────────────────
+# 'kubectl logs <pod>' veya sunucu loglarında görünür.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("finans-api")
 
 TR_TZ = timezone(timedelta(hours=3))
 
@@ -268,6 +278,9 @@ def update_asset_prices(db: Session = Depends(get_db)):
     assets = db.query(models.Asset).all()
     crawler = Crawler()
     updated_count = 0
+    failed_assets: list[str] = []
+
+    logger.info("Fiyat güncellemesi başladı. Toplam varlık: %d", len(assets))
 
     for asset in assets:
         try:
@@ -374,11 +387,26 @@ def update_asset_prices(db: Session = Depends(get_db)):
                         asset.last_updated = datetime.now(TR_TZ)
                         updated_count += 1
 
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "Fiyat güncellenemedi | varlık=%s tip=%s | hata=%s",
+                asset.symbol, asset.asset_type, repr(e)
+            )
+            failed_assets.append(asset.symbol)
             continue
 
     db.commit()
-    return {"message": f"{updated_count} adet varlığın fiyatı güncellendi."}
+
+    if failed_assets:
+        logger.warning("Güncelleme tamamlandı — başarısız varlıklar: %s", failed_assets)
+    else:
+        logger.info("Tüm varlıklar başarıyla güncellendi. Toplam: %d", updated_count)
+
+    return {
+        "message": f"{updated_count} adet varlığın fiyatı güncellendi.",
+        "updated": updated_count,
+        "failed":  failed_assets,
+    }
 
 
 @app.post("/transactions/", response_model=schemas.TransactionResponse)
