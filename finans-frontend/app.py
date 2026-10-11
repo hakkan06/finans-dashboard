@@ -374,26 +374,7 @@ varlik_cnt = len(summary_data)
 borc_cnt   = len(debts)
 
 st.markdown(f"""
-<style>
-.kpi-mood {{
-    background: linear-gradient(135deg, rgba(124,58,237,0.15) 0%, rgba(168,85,247,0.08) 100%);
-    border: 1px solid rgba(139,92,246,0.35);
-    border-radius: 12px;
-    padding: 14px 16px;
-    cursor: pointer;
-    text-decoration: none;
-    display: block;
-    transition: border-color .2s, transform .15s;
-}}
-.kpi-mood:hover {{
-    border-color: rgba(139,92,246,0.7);
-    transform: translateY(-2px);
-}}
-.kpi-mood .kpi-label {{ color: #a78bfa; }}
-.kpi-mood .kpi-value {{ font-size: 1.25rem; color: #c4b5fd; font-weight: 600; margin: 4px 0 2px; }}
-.kpi-mood .kpi-sub {{ font-size: 11px; opacity: .55; }}
-</style>
-<div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr);">
+<div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr);">
     <div class="kpi-card">
         <div class="kpi-label">💼 Toplam Varlık</div>
         <div class="kpi-value">₺ {global_total_assets:,.0f}</div>
@@ -409,13 +390,9 @@ st.markdown(f"""
         <div class="kpi-value {net_color}">₺ {net_worth:,.0f}</div>
         <div class="kpi-sub">{net_sign}{(net_worth/global_total_assets*100) if global_total_assets else 0:.1f}% oran</div>
     </div>
-    <a class="kpi-mood" href="https://mood.185.229.119.58.nip.io" target="_blank">
-        <div class="kpi-label">📔 MoodDiary</div>
-        <div class="kpi-value">Günlük Tut</div>
-        <div class="kpi-sub">mood.185.229.119.58.nip.io ↗</div>
-    </a>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 # =====================================================================
