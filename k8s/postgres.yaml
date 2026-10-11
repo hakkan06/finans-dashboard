@@ -51,11 +51,20 @@ spec:
         - containerPort: 5432
         env:
         - name: POSTGRES_USER
-          value: "finans_user"
+          valueFrom:
+            secretKeyRef:
+              name: finans-db-secret
+              key: db_user
         - name: POSTGRES_PASSWORD
-          value: "finans_pass"
+          valueFrom:
+            secretKeyRef:
+              name: finans-db-secret
+              key: db_password
         - name: POSTGRES_DB
-          value: "finans_db"
+          valueFrom:
+            secretKeyRef:
+              name: finans-db-secret
+              key: db_name
         volumeMounts:
         - mountPath: /var/lib/postgresql/data
           name: finans-postgres-data

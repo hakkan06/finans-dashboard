@@ -4,6 +4,7 @@ metadata:
   name: finans-ingress
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.middlewares: default-finans-basic-auth@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:

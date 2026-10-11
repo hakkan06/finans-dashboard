@@ -6,9 +6,12 @@ import os
 # Geliştirme ortamı (Mac) ve Kubernetes ortamı için bağlantı adresini ayarlıyoruz.
 # Kubernetes içinde çalışırken DB_HOST ortam değişkenini "finans-postgres-service" yapacağız.
 # Lokalimizde geliştirirken ise varsayılan olarak "localhost" kullanacak.
-DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_HOST     = os.getenv("DB_HOST",     "localhost")
+DB_USER     = os.getenv("DB_USER",     "finans_user")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "finans_pass")
+DB_NAME     = os.getenv("DB_NAME",     "finans_db")
 
-SQLALCHEMY_DATABASE_URL = f"postgresql://finans_user:finans_pass@{DB_HOST}:5432/finans_db"
+SQLALCHEMY_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:5432/{DB_NAME}"
 
 # Veritabanı motorunu (engine) oluşturuyoruz
 engine = create_engine(SQLALCHEMY_DATABASE_URL)

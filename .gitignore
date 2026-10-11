@@ -1,2 +1,14 @@
 finans_backup.sql
 builds/
+
+# K8s Secret dosyaları — asla git'e girmesin
+k8s/db-secret.yaml
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store

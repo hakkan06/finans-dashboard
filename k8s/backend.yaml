@@ -23,6 +23,21 @@ spec:
           value: "Europe/Istanbul"
         - name: DB_HOST
           value: "finans-postgres-service"
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: finans-db-secret
+              key: db_user
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: finans-db-secret
+              key: db_password
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: finans-db-secret
+              key: db_name
         - name: MAIL_USER
           valueFrom:
             secretKeyRef:

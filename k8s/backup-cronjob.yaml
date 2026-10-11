@@ -19,18 +19,36 @@ spec:
             env:
             # Finans DB Env
             - name: FINANS_DB_USER
-              value: "finans_user"
+              valueFrom:
+                secretKeyRef:
+                  name: finans-db-secret
+                  key: db_user
             - name: FINANS_DB_PASSWORD
-              value: "finans_pass"
+              valueFrom:
+                secretKeyRef:
+                  name: finans-db-secret
+                  key: db_password
             - name: FINANS_DB_NAME
-              value: "finans_db"
+              valueFrom:
+                secretKeyRef:
+                  name: finans-db-secret
+                  key: db_name
             # Mooddiary DB Env
             - name: MOODDIARY_DB_USER
-              value: "postgres"
+              valueFrom:
+                secretKeyRef:
+                  name: finans-db-secret
+                  key: mooddiary_db_user
             - name: MOODDIARY_DB_PASSWORD
-              value: "moodsecure123"
+              valueFrom:
+                secretKeyRef:
+                  name: finans-db-secret
+                  key: mooddiary_db_password
             - name: MOODDIARY_DB_NAME
-              value: "mooddiary"
+              valueFrom:
+                secretKeyRef:
+                  name: finans-db-secret
+                  key: mooddiary_db_name
             volumeMounts:
             - name: rclone-config-volume
               mountPath: /root/.config/rclone
