@@ -14,7 +14,7 @@ API_URL = os.getenv("API_URL", "http://localhost:8000")
 # =====================================================================
 # PAGE CONFIG
 # =====================================================================
-st.set_page_config(page_title="Finans Dashboard", layout="wide", page_icon="💰")
+st.set_page_config(page_title="Finans Dashboard", layout="wide", page_icon="💰", initial_sidebar_state="expanded")
 
 # =====================================================================
 # GLOBAL CSS — Temiz, Modern, Kullanıcı Dostu
@@ -40,6 +40,16 @@ html, body, [class*="css"], .stApp {
 }
 [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
     font-size: 13px;
+}
+/* Sidebar toggle butonunu her zaman göster */
+[data-testid="collapsedControl"] {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+button[kind="header"] {
+    display: flex !important;
+    visibility: visible !important;
 }
 
 /* ─── KPI Kartları ───────────────────────────────── */
