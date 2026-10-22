@@ -42,14 +42,19 @@ html, body, [class*="css"], .stApp {
     font-size: 13px;
 }
 /* Sidebar toggle butonunu her zaman göster */
-[data-testid="collapsedControl"] {
+[data-testid="collapsedControl"],
+[data-testid="collapsedControl"] button,
+section[data-testid="stSidebarCollapsedControl"] {
     display: flex !important;
     visibility: visible !important;
     opacity: 1 !important;
+    pointer-events: auto !important;
 }
-button[kind="header"] {
-    display: flex !important;
-    visibility: visible !important;
+/* Sidebar genişliğini sabitle, tamamen kaybolmasın */
+[data-testid="stSidebar"][aria-expanded="false"] {
+    min-width: 40px !important;
+    width: 40px !important;
+    overflow: visible !important;
 }
 
 /* ─── KPI Kartları ───────────────────────────────── */
@@ -367,6 +372,10 @@ net_worth = global_total_assets - global_total_debts
 # =====================================================================
 # SIDEBAR — Menü & Hızlı İşlemler
 # =====================================================================
+# Sayfa seçimini session_state ile koru — sidebar kapansa bile kaybolmaz
+if "sayfa" not in st.session_state:
+    st.session_state["sayfa"] = "📊 Genel Bakış"
+
 with st.sidebar:
     st.markdown("### 💰 Finans Portföyü")
     st.caption(f"USD/TRY: **₺{usd_try_rate:,.2f}** · {bugun.strftime('%d.%m.%Y')}")
@@ -378,10 +387,12 @@ with st.sidebar:
 
     st.divider()
 
-    sayfa = st.radio(
+    st.session_state["sayfa"] = st.radio(
         "Menü",
         ["📊 Genel Bakış", "💼 Varlık Yönetimi", "💳 Borç Takibi", "📈 Trend Analizi"],
+        index=["📊 Genel Bakış", "💼 Varlık Yönetimi", "💳 Borç Takibi", "📈 Trend Analizi"].index(st.session_state["sayfa"]),
         label_visibility="collapsed",
+        key="_sayfa_radio",
     )
 
     st.divider()
@@ -425,6 +436,8 @@ with st.sidebar:
         else:
             fark_str = f"{fark_dk // 60} saat önce"
         st.caption(f"🕐 Son Güncelleme: {fark_str}")
+
+sayfa = st.session_state["sayfa"]
 
 
 # =====================================================================
