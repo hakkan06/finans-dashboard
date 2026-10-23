@@ -384,9 +384,9 @@ if "sayfa" not in st.session_state:
 
 SAYFALAR = ["📊 Genel Bakış", "💼 Varlık Yönetimi", "💳 Borç Takibi", "📈 Trend Analizi"]
 
-# ── ÜST NAVİGASYON BUTONLARI (Sidebar'dan bağımsız, her zaman görünür) ──
-nav_cols = st.columns(len(SAYFALAR))
-for i, (col, sayfa_adi) in enumerate(zip(nav_cols, SAYFALAR)):
+# ── ÜST NAVİGASYON + GÜNCELLE BUTONU (her zaman görünür) ──
+nav_cols = st.columns([1, 1, 1, 1, 1.2])
+for i, (col, sayfa_adi) in enumerate(zip(nav_cols[:4], SAYFALAR)):
     with col:
         is_active = st.session_state["sayfa"] == sayfa_adi
         if st.button(
@@ -397,6 +397,33 @@ for i, (col, sayfa_adi) in enumerate(zip(nav_cols, SAYFALAR)):
         ):
             st.session_state["sayfa"] = sayfa_adi
             st.rerun()
+
+with nav_cols[4]:
+    if st.button("🔄 Fiyatları Güncelle", use_container_width=True, key="top_update"):
+        with st.spinner("Güncelleniyor..."):
+            res = requests.post(f"{API_URL}/assets/update-prices")
+            if res.status_code == 200:
+                requests.post(f"{API_URL}/portfolio/snapshot", json={
+                    "total_assets": global_total_assets,
+                    "total_debts":  global_total_debts
+                }, timeout=3)
+                st.toast("📈 Fiyatlar başarıyla güncellendi!")
+                time.sleep(0.8)
+                st.rerun()
+            elif res.status_code == 429:
+                st.warning(res.json().get("detail", "Çok sık istek yapıldı."))
+            else:
+                st.error("Güncelleme başarısız.")
+
+# Son güncelleme + kur bilgisi
+_sg_list = [pd.to_datetime(item['last_updated']) for item in summary_data if item.get('last_updated')]
+if _sg_list:
+    _sg = max(_sg_list)
+    _simdi = pd.Timestamp.now(tz='Europe/Istanbul')
+    _sg = _sg.tz_localize('UTC').tz_convert('Europe/Istanbul') if _sg.tzinfo is None else _sg.tz_convert('Europe/Istanbul')
+    _dk = int((_simdi - _sg).total_seconds() / 60)
+    _fark = "az önce" if _dk < 1 else (f"{_dk} dk önce" if _dk < 60 else f"{_dk // 60} saat önce")
+    st.caption(f"🕐 Son güncelleme: **{_fark}** &nbsp;·&nbsp; USD/TRY: **₺{usd_try_rate:,.2f}**", unsafe_allow_html=True)
 
 sayfa = st.session_state["sayfa"]
 
