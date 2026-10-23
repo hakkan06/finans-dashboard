@@ -32,7 +32,12 @@ html, body, [class*="css"], .stApp {
     padding-bottom: 1.5rem !important;
     max-width: 1400px;
 }
-#MainMenu, footer, header { visibility: hidden; }
+/* MainMenu ve footer gizle — header'ı değil (toggle butonunu etkiliyor) */
+#MainMenu { display: none !important; }
+footer { visibility: hidden !important; }
+/* Header içeriğini gizle ama header elemanını koru */
+header[data-testid="stHeader"] { background: transparent !important; }
+header[data-testid="stHeader"] > div:first-child { visibility: hidden !important; }
 
 /* ─── Sidebar ────────────────────────────────────── */
 [data-testid="stSidebar"] {
@@ -41,19 +46,21 @@ html, body, [class*="css"], .stApp {
 [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
     font-size: 13px;
 }
-/* Sidebar toggle butonunu her zaman göster */
+/* Sidebar toggle butonunu her zaman göster — tüm olası seçiciler */
 [data-testid="collapsedControl"],
 [data-testid="collapsedControl"] button,
-section[data-testid="stSidebarCollapsedControl"] {
+[data-testid="stSidebarCollapsedControl"],
+section[data-testid="stSidebarCollapsedControl"],
+button[data-testid="baseButton-headerNoPadding"] {
     display: flex !important;
     visibility: visible !important;
     opacity: 1 !important;
     pointer-events: auto !important;
+    z-index: 9999 !important;
 }
-/* Sidebar genişliğini sabitle, tamamen kaybolmasın */
+/* Sidebar tamamen kaybolmasın, collapse ok ikonu kalsın */
 [data-testid="stSidebar"][aria-expanded="false"] {
-    min-width: 40px !important;
-    width: 40px !important;
+    min-width: 2.5rem !important;
     overflow: visible !important;
 }
 
