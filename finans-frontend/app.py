@@ -377,12 +377,30 @@ net_worth = global_total_assets - global_total_debts
 
 
 # =====================================================================
-# SIDEBAR — Menü & Hızlı İşlemler
+# NAVİGASYON — Üst Bar + Sidebar Yardımcı Bilgiler
 # =====================================================================
-# Sayfa seçimini session_state ile koru — sidebar kapansa bile kaybolmaz
 if "sayfa" not in st.session_state:
     st.session_state["sayfa"] = "📊 Genel Bakış"
 
+SAYFALAR = ["📊 Genel Bakış", "💼 Varlık Yönetimi", "💳 Borç Takibi", "📈 Trend Analizi"]
+
+# ── ÜST NAVİGASYON BUTONLARI (Sidebar'dan bağımsız, her zaman görünür) ──
+nav_cols = st.columns(len(SAYFALAR))
+for i, (col, sayfa_adi) in enumerate(zip(nav_cols, SAYFALAR)):
+    with col:
+        is_active = st.session_state["sayfa"] == sayfa_adi
+        if st.button(
+            sayfa_adi,
+            key=f"nav_{i}",
+            use_container_width=True,
+            type="primary" if is_active else "secondary",
+        ):
+            st.session_state["sayfa"] = sayfa_adi
+            st.rerun()
+
+sayfa = st.session_state["sayfa"]
+
+# ── SIDEBAR — Sadece yardımcı bilgiler ──
 with st.sidebar:
     st.markdown("### 💰 Finans Portföyü")
     st.caption(f"USD/TRY: **₺{usd_try_rate:,.2f}** · {bugun.strftime('%d.%m.%Y')}")
@@ -394,18 +412,7 @@ with st.sidebar:
 
     st.divider()
 
-    st.session_state["sayfa"] = st.radio(
-        "Menü",
-        ["📊 Genel Bakış", "💼 Varlık Yönetimi", "💳 Borç Takibi", "📈 Trend Analizi"],
-        index=["📊 Genel Bakış", "💼 Varlık Yönetimi", "💳 Borç Takibi", "📈 Trend Analizi"].index(st.session_state["sayfa"]),
-        label_visibility="collapsed",
-        key="_sayfa_radio",
-    )
-
-    st.divider()
-
-    # Fiyat güncelleme butonu
-    if st.button("🔄 Piyasa Fiyatlarını Güncelle", use_container_width=True):
+    if st.button("🔄 Piyasa Fiyatlarını Güncelle", use_container_width=True, key="sidebar_update"):
         with st.spinner("Piyasa verileri taranıyor..."):
             res = requests.post(f"{API_URL}/assets/update-prices")
             if res.status_code == 200:
@@ -421,7 +428,6 @@ with st.sidebar:
             else:
                 st.error("Fiyatlar güncellenemedi.")
 
-    # Son güncelleme zamanı
     son_guncelleme = None
     for item in summary_data:
         if item.get('last_updated'):
@@ -443,8 +449,6 @@ with st.sidebar:
         else:
             fark_str = f"{fark_dk // 60} saat önce"
         st.caption(f"🕐 Son Güncelleme: {fark_str}")
-
-sayfa = st.session_state["sayfa"]
 
 
 # =====================================================================
