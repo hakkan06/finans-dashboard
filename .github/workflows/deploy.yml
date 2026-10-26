@@ -33,6 +33,15 @@ jobs:
           # Derlenen imajı K3s'in containerd motoruna enjekte et (ImagePullBackOff hatasını önler)
           docker save finans-backend:${{ github.sha }} finans-backend:latest | sudo k3s ctr images import -
 
+      - name: Backend testleri
+        # İlk geçişte uyarı olarak çalışır (dağıtımı durdurmaz). Birkaç başarılı çalışmadan sonra
+        # buradaki 'continue-on-error' satırını silersen testler dağıtımı engelleyen bir kapı olur.
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD/finans-backend:/work" -w /work \
+            -e DATABASE_URL=sqlite:////tmp/test.db \
+            python:3.11-slim sh -c "pip install -q --no-cache-dir -r requirements.txt -r requirements-dev.txt && python -m pytest -q"
+
       - name: Frontend imajını derle
         run: |
           cd finans-frontend

@@ -1,20 +1,20 @@
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
-from sqlalchemy.orm import Session
-import yfinance as yf
-from tefas import Crawler
-from datetime import datetime, timedelta, date, timezone
-from dateutil.relativedelta import relativedelta
-
-from . import models, schemas
-from .database import engine, get_db
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-import os
+import html
 import logging
+import os
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from datetime import date
+from typing import Optional
 
-# ── Logging Yapılandırması ────────────────────────────────────────────
-# 'kubectl logs <pod>' veya sunucu loglarında görünür.
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Query
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from . import models, prices, schemas, services
+from .database import engine, get_db
+from .services import LedgerError, today_tr
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -22,19 +22,38 @@ logging.basicConfig(
 )
 logger = logging.getLogger("finans-api")
 
-TR_TZ = timezone(timedelta(hours=3))
-
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Finans API")
 
-_last_price_update = None
 MAIL_USER = os.getenv("MAIL_USER", "")
 MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "")
 
+# Elle "Fiyatları güncelle" için basit sıklık sınırı (gece görevi bunu kullanmaz).
+_MANUAL_REFRESH_COOLDOWN = 20
+_last_manual_refresh = None
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Sağlık / özet
+# ─────────────────────────────────────────────────────────────────────
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.get("/overview", response_model=schemas.OverviewResponse)
+def get_overview(db: Session = Depends(get_db)):
+    """Tek çağrıda panonun üst kartları: toplamlar, günlük değişim, bu ay ödenecek, dağılım."""
+    return services.build_overview(db)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Mail
+# ─────────────────────────────────────────────────────────────────────
 def send_mail(subject: str, body: str):
     if not MAIL_USER or not MAIL_PASSWORD:
-        print("Mail ayarları eksik. Mail gönderimi atlandı.")
+        logger.info("Mail ayarları eksik, gönderim atlandı.")
         return
     try:
         msg = MIMEMultipart("alternative")
@@ -42,124 +61,89 @@ def send_mail(subject: str, body: str):
         msg["From"] = MAIL_USER
         msg["To"] = MAIL_USER
         msg.attach(MIMEText(body, "html"))
-        
-        # Kritik Düzeltme 1: timeout=10 eklendi. Ağ engellenirse sonsuza kadar beklemez, 10 saniye sonra hataya (except) düşer.
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
             server.login(MAIL_USER, MAIL_PASSWORD)
             server.sendmail(MAIL_USER, MAIL_USER, msg.as_string())
-            print("Arka plan görevi: Mail başarıyla gönderildi!")
-            
-    except Exception as e:
-        print(f"Arka plan görevi başarısız: Mail gönderilemedi: {e}")
+        logger.info("Borç bildirimi maili gönderildi.")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Mail gönderilemedi: %r", e)
 
-# Kritik Düzeltme 2: Parametrelere 'background_tasks' eklendi
+
+def _due_mail_rows(db: Session) -> list[str]:
+    today = today_tr()
+    rows: list[str] = []
+    q = (
+        db.query(models.DebtInstallment)
+        .filter(models.DebtInstallment.is_paid.is_(False))
+        .order_by(models.DebtInstallment.due_date)
+        .all()
+    )
+    for inst in q:
+        left = (inst.due_date - today).days
+        name = html.escape(inst.debt.name if inst.debt else "?")
+        if left < 0:
+            rows.append(
+                f"<tr style='color:#c0392b'><td>{name}</td><td>₺{inst.amount:,.2f}</td>"
+                f"<td>{inst.due_date}</td><td>🔴 {abs(left)} gün gecikmiş</td></tr>"
+            )
+        elif left <= 3:
+            rows.append(
+                f"<tr style='color:#e67e22'><td>{name}</td><td>₺{inst.amount:,.2f}</td>"
+                f"<td>{inst.due_date}</td><td>⚠️ {left} gün kaldı</td></tr>"
+            )
+    return rows
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Gece görevi
+# ─────────────────────────────────────────────────────────────────────
 @app.post("/system/daily-job")
 def run_daily_job(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    update_asset_prices(db)
-    usd_try = 32.20
+    """Fiyatları günceller, günün kaydını yazar, vadesi yaklaşan taksitler için mail atar."""
     try:
-        usd_hist = yf.Ticker("TRY=X").history(period="5d")
-        if not usd_hist.empty:
-            _usd_valid = usd_hist["Close"].dropna()
-            if not _usd_valid.empty:
-                usd_try = float(_usd_valid.iloc[-1])
-    except:
-        pass
+        prices.refresh_all(db)
+    except Exception as e:  # noqa: BLE001  — fiyat hatası kaydı engellemesin
+        logger.warning("Gece görevinde fiyat güncellemesi başarısız: %r", e)
 
-    summary = get_portfolio_summary(db)
-    total_assets = 0.0
-    for item in summary:
-        val = item["net_value"]
-        if item["asset_type"] == "US_STOCK":
-            val *= usd_try
-        total_assets += val
-
-    total_debts = 0.0
-    debts = db.query(models.Debt).all()
-    for d in debts:
-        for inst in d.installments:
-            if not inst.is_paid:
-                total_debts += inst.amount
-
-    today = datetime.now(TR_TZ).date()
-    record = db.query(models.PortfolioHistory).filter(models.PortfolioHistory.record_date == today).first()
-    net = total_assets - total_debts
-
-    if record:
-        record.total_assets = total_assets
-        record.total_debts = total_debts
-        record.net_worth = net
+    ov = services.build_overview(db)
+    if ov["fx_missing"]:
+        logger.warning("USD/TRY kuru alınamadı; bugünün kaydı yazılmadı.")
     else:
-        new_record = models.PortfolioHistory(
-            record_date=today,
-            total_assets=total_assets,
-            total_debts=total_debts,
-            net_worth=net
-        )
-        db.add(new_record)
-    db.commit()
+        services.save_snapshot(db, ov["total_assets"], ov["total_debts"])
 
-    # Bugün vadesi gelen veya gecikmiş taksitleri bul
-    bugun = datetime.now(TR_TZ).date()
-    bildirim_satirlari = []
-
-    tum_borclar = db.query(models.Debt).all()
-    for d in tum_borclar:
-        for inst in d.installments:
-            if not inst.is_paid:
-                kalan = (inst.due_date - bugun).days
-                if kalan < 0:
-                    bildirim_satirlari.append(
-                        f"<tr style='color:#c0392b'><td>{d.name}</td><td>₺{inst.amount:,.2f}</td>"
-                        f"<td>{inst.due_date}</td><td>🔴 {abs(kalan)} gün gecikmiş</td></tr>"
-                    )
-                elif kalan <= 3:
-                    bildirim_satirlari.append(
-                        f"<tr style='color:#e67e22'><td>{d.name}</td><td>₺{inst.amount:,.2f}</td>"
-                        f"<td>{inst.due_date}</td><td>⚠️ {kalan} gün kaldı</td></tr>"
-                    )
-
-    if bildirim_satirlari:
-        tablo = "".join(bildirim_satirlari)
+    rows = _due_mail_rows(db)
+    if rows:
         body = f"""
         <html><body>
         <h2>💰 Finans Dashboard — Günlük Borç Bildirimi</h2>
         <p>Aşağıdaki taksitler için işlem yapmanız gerekiyor:</p>
         <table border='1' cellpadding='8' cellspacing='0' style='border-collapse:collapse;width:100%'>
-            <tr style='background:#2962FF;color:white'>
-                <th>Borç Adı</th><th>Tutar</th><th>Vade Tarihi</th><th>Durum</th>
-            </tr>
-            {tablo}
+          <tr style='background:#2962FF;color:white'>
+            <th>Borç Adı</th><th>Tutar</th><th>Vade Tarihi</th><th>Durum</th>
+          </tr>
+          {''.join(rows)}
         </table>
-        <br>
-        <p>Net Servet: <b>₺{net:,.2f}</b></p>
+        <br><p>Net Servet: <b>₺{ov['net_worth']:,.2f}</b></p>
         </body></html>
         """
-        # Kritik Düzeltme 3: Mail fonksiyonunu bloklayıcı şekilde çağırmak yerine kuyruğa ekliyoruz.
         background_tasks.add_task(send_mail, "🔔 Finans Dashboard — Borç Bildirimi", body)
-        
-    return {"message": "Gece otomasyonu tamamlandı", "net_worth": net}
+
+    return {"message": "Gece otomasyonu tamamlandı", "net_worth": ov["net_worth"]}
 
 
+# ─────────────────────────────────────────────────────────────────────
+# Portföy geçmişi / özet
+# ─────────────────────────────────────────────────────────────────────
 @app.post("/portfolio/snapshot")
-def save_snapshot(snapshot: schemas.SnapshotCreate, db: Session = Depends(get_db)):
-    today = datetime.now(TR_TZ).date()
-    record = db.query(models.PortfolioHistory).filter(models.PortfolioHistory.record_date == today).first()
-    net = snapshot.total_assets - snapshot.total_debts
-
-    if record:
-        record.total_assets = snapshot.total_assets
-        record.total_debts = snapshot.total_debts
-        record.net_worth = net
+def save_snapshot(snapshot: Optional[schemas.SnapshotCreate] = Body(default=None), db: Session = Depends(get_db)):
+    """Bugünün kaydını yazar. Gövde verilmezse değerler sunucuda hesaplanır (önerilen)."""
+    if snapshot is None:
+        ov = services.build_overview(db)
+        if ov["fx_missing"]:
+            raise HTTPException(status_code=503, detail="Dolar kuru şu an alınamıyor; kayıt yazılmadı. Biraz sonra tekrar dene.")
+        services.save_snapshot(db, ov["total_assets"], ov["total_debts"])
     else:
-        new_record = models.PortfolioHistory(
-            record_date=today,
-            total_assets=snapshot.total_assets,
-            total_debts=snapshot.total_debts,
-            net_worth=net
-        )
-        db.add(new_record)
-    db.commit()
+        services.save_snapshot(db, snapshot.total_assets, snapshot.total_debts)
     return {"message": "Snapshot kaydedildi."}
 
 
@@ -168,87 +152,50 @@ def get_portfolio_history(db: Session = Depends(get_db)):
     return db.query(models.PortfolioHistory).order_by(models.PortfolioHistory.record_date).all()
 
 
+@app.delete("/portfolio/history/{record_date}")
+def delete_history_point(record_date: date, db: Session = Depends(get_db)):
+    """Yanlış kaydedilmiş bir günün noktasını siler (grafikten aykırı değeri temizlemek için)."""
+    rec = db.query(models.PortfolioHistory).filter(models.PortfolioHistory.record_date == record_date).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Kayıt bulunamadı")
+    db.delete(rec)
+    db.commit()
+    return {"message": "Silindi"}
+
+
 @app.get("/portfolio/summary", response_model=list[schemas.PortfolioItem])
-def get_portfolio_summary(db: Session = Depends(get_db)):
-    assets = db.query(models.Asset).all()
-    summary = []
-    for asset in assets:
-        txns = db.query(models.Transaction).filter(
-            models.Transaction.asset_id == asset.id
-        ).order_by(models.Transaction.transaction_date).all()
-
-        buy_lots = []
-        for t in txns:
-            if t.quantity > 0:
-                buy_lots.append({'qty': t.quantity, 'price': t.unit_price})
-            elif t.quantity < 0:
-                sell_qty = abs(t.quantity)
-                for lot in buy_lots:
-                    if sell_qty <= 0:
-                        break
-                    if lot['qty'] >= sell_qty:
-                        lot['qty'] -= sell_qty
-                        sell_qty = 0
-                    else:
-                        sell_qty -= lot['qty']
-                        lot['qty'] = 0
-
-        total_qty = 0.0
-        total_net_value = 0.0
-        total_tax = 0.0
-        total_cost = 0.0
-        curr_price = asset.current_price or 0.0
-        is_fund = (asset.asset_type == "FUND")
-
-        for lot in buy_lots:
-            if lot['qty'] > 0:
-                total_qty += lot['qty']
-                cost = lot['qty'] * lot['price']
-                total_cost += cost
-                gross_val = lot['qty'] * curr_price
-                profit = gross_val - cost
-                tax = (profit * 0.175) if (is_fund and profit > 0) else 0.0
-                total_tax += tax
-                total_net_value += (gross_val - tax)
-
-        # 🚀 YENİ EKLENEN MANTIK: Eğer eldeki miktar sıfırsa (veya küsurat hatası sınırındaysa), özete ekleme ve atla.
-        if total_qty <= 0.0001:
-            continue
-
-        summary.append({
-            "asset_id": asset.id,
-            "asset_type": asset.asset_type,
-            "symbol": asset.symbol,
-            "name": asset.name,
-            "total_qty": total_qty,
-            "current_price": curr_price,
-            "previous_price": asset.previous_price,
-            "total_cost": total_cost,
-            "total_tax": total_tax,
-            "net_value": total_net_value,
-            "last_updated": asset.last_updated
-        })
-    return summary
+def get_portfolio_summary(include_empty: bool = Query(False), db: Session = Depends(get_db)):
+    usd = services.get_usd_try(db)
+    return services.portfolio_items(db, include_empty=include_empty, usd=usd)
 
 
-from sqlalchemy.exc import IntegrityError
-
+# ─────────────────────────────────────────────────────────────────────
+# Varlıklar
+# ─────────────────────────────────────────────────────────────────────
 @app.post("/assets/", response_model=schemas.AssetResponse)
 def create_asset(asset: schemas.AssetCreate, db: Session = Depends(get_db)):
-    db_asset = models.Asset(**asset.dict())
+    """Varlığı ekler ve fiyatı hemen çekmeyi dener (current_price boş dönerse sembol bulunamadı)."""
+    data = asset.model_dump()
+    data["symbol"] = data["symbol"].strip().upper()
+    data["name"] = data["name"].strip() or data["symbol"]
+    if not data["symbol"]:
+        raise HTTPException(status_code=400, detail="Sembol boş olamaz.")
+    db_asset = models.Asset(**data)
     db.add(db_asset)
     try:
-        db.commit()
-        db.refresh(db_asset)
-        return db_asset
+        db.flush()
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Bu sembole sahip varlık zaten sistemde mevcut.")
+    prices.refresh_asset(db_asset)
+    db.commit()
+    db.refresh(db_asset)
+    return db_asset
 
 
 @app.get("/assets/", response_model=list[schemas.AssetResponse])
 def read_assets(db: Session = Depends(get_db)):
-    return db.query(models.Asset).all()
+    return db.query(models.Asset).order_by(models.Asset.id).all()
 
 
 @app.delete("/assets/{asset_id}")
@@ -256,202 +203,108 @@ def delete_asset(asset_id: int, db: Session = Depends(get_db)):
     asset = db.query(models.Asset).filter(models.Asset.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Varlık bulunamadı")
+    symbol = asset.symbol
     db.query(models.Transaction).filter(models.Transaction.asset_id == asset_id).delete()
     db.delete(asset)
     db.commit()
-    return {"message": f"{asset.symbol} başarıyla silindi."}
+    return {"message": f"{symbol} başarıyla silindi."}
 
 
 @app.post("/assets/update-prices")
 def update_asset_prices(db: Session = Depends(get_db)):
-    global _last_price_update
-    now = datetime.now(TR_TZ)
+    """Tüm fiyatları günceller ve bugünün kaydını sunucuda yazar."""
+    global _last_manual_refresh
+    now = services.now_tr()
+    if _last_manual_refresh and (now - _last_manual_refresh).total_seconds() < _MANUAL_REFRESH_COOLDOWN:
+        left = int(_MANUAL_REFRESH_COOLDOWN - (now - _last_manual_refresh).total_seconds()) + 1
+        raise HTTPException(status_code=429, detail=f"Çok sık istek. {left} saniye sonra tekrar deneyin.")
+    _last_manual_refresh = now
 
-    if _last_price_update and (now - _last_price_update).seconds < 60:
-        kalan = 60 - (now - _last_price_update).seconds
-        raise HTTPException(
-            status_code=429,
-            detail=f"Çok sık istek. {kalan} saniye sonra tekrar deneyin."
-        )
-
-    _last_price_update = now
-    assets = db.query(models.Asset).all()
-    crawler = Crawler()
-    updated_count = 0
-    failed_assets: list[str] = []
-
-    logger.info("Fiyat güncellemesi başladı. Toplam varlık: %d", len(assets))
-
-    for asset in assets:
-        try:
-            upper_symbol = asset.symbol.strip().upper()
-            
-            # Akıllı Eşleştirici: Altın ve gümüş türevlerini otomatik olarak COMMODITY (Emtia) tipine çevir
-            if upper_symbol in ["ALTIN", "XAU", "GRAMALTIN", "GOLD", "GRAM-ALTIN", "GLD"]:
-                if asset.asset_type != "COMMODITY":
-                    asset.asset_type = "COMMODITY"
-            elif upper_symbol in ["GUMUS", "XAG", "GRAMGUMUS", "SILVER", "GRAM-GUMUS", "SLV"]:
-                if asset.asset_type != "COMMODITY":
-                    asset.asset_type = "COMMODITY"
-                    
-            if asset.asset_type == "US_STOCK":
-                hist = yf.Ticker(asset.symbol).history(period="7d")
-                if not hist.empty and "Close" in hist:
-                    valid_closes = hist["Close"].dropna()
-                    if not valid_closes.empty:
-                        if len(valid_closes) > 1:
-                            asset.previous_price = float(valid_closes.iloc[-2])
-                        asset.current_price = float(valid_closes.iloc[-1])
-                        asset.last_updated = datetime.now(TR_TZ)
-                        updated_count += 1
-
-            elif asset.asset_type == "TR_STOCK":
-                # .strip() ile yanlışlıkla girilen boşlukları temizliyoruz
-                bist_symbol = asset.symbol.strip().upper()
-                if not bist_symbol.endswith(".IS"):
-                    bist_symbol += ".IS"
-                
-                # Tatilleri atlaması için 7 günlük veri çekip NaN olanları siliyoruz
-                hist = yf.Ticker(bist_symbol).history(period="7d")
-                if not hist.empty and "Close" in hist:
-                    valid_closes = hist["Close"].dropna()
-                    if not valid_closes.empty:
-                        if len(valid_closes) > 1:
-                            asset.previous_price = float(valid_closes.iloc[-2])
-                        asset.current_price = float(valid_closes.iloc[-1])
-                        asset.last_updated = datetime.now(TR_TZ)
-                        updated_count += 1
-
-            elif asset.asset_type == "FUND":
-                end_date = datetime.now(TR_TZ)
-                start_date = end_date - timedelta(days=5)
-                data = crawler.fetch(
-                    start=start_date.strftime("%Y-%m-%d"),
-                    end=end_date.strftime("%Y-%m-%d"),
-                    name=asset.symbol
-                )
-                if not data.empty:
-                    data = data.sort_values(by="date", ascending=False)
-                    if len(data) > 1:
-                        asset.previous_price = float(data.iloc[1]['price'])
-                    asset.current_price = float(data.iloc[0]['price'])
-                    asset.last_updated = datetime.now(TR_TZ)
-                    updated_count += 1
-
-            elif asset.asset_type == "COMMODITY":
-                usd_try_hist = yf.Ticker("TRY=X").history(period="5d")
-                usd_try_valid = usd_try_hist["Close"].dropna() if not usd_try_hist.empty else None
-                if usd_try_valid is not None and not usd_try_valid.empty:
-                    usd_try = float(usd_try_valid.iloc[-1])
-                    if upper_symbol in ["ALTIN", "XAU", "GRAMALTIN", "GOLD", "GRAM-ALTIN", "GLD"]:
-                        xau_hist = yf.Ticker("GC=F").history(period="5d")
-                        xau_valid = xau_hist["Close"].dropna() if not xau_hist.empty else None
-                        if xau_valid is not None and not xau_valid.empty:
-                            if len(xau_valid) > 1 and len(usd_try_valid) > 1:
-                                asset.previous_price = (float(xau_valid.iloc[-2]) * float(usd_try_valid.iloc[-2])) / 31.1034768
-                            asset.current_price = (float(xau_valid.iloc[-1]) * usd_try) / 31.1034768
-                            asset.last_updated = datetime.now(TR_TZ)
-                            updated_count += 1
-                    elif upper_symbol in ["GUMUS", "XAG", "GRAMGUMUS", "SILVER", "GRAM-GUMUS", "SLV"]:
-                        xag_hist = yf.Ticker("SI=F").history(period="5d")
-                        xag_valid = xag_hist["Close"].dropna() if not xag_hist.empty else None
-                        if xag_valid is not None and not xag_valid.empty:
-                            if len(xag_valid) > 1 and len(usd_try_valid) > 1:
-                                asset.previous_price = (float(xag_valid.iloc[-2]) * float(usd_try_valid.iloc[-2])) / 31.1034768
-                            asset.current_price = (float(xag_valid.iloc[-1]) * usd_try) / 31.1034768
-                            asset.last_updated = datetime.now(TR_TZ)
-                            updated_count += 1
-
-            elif asset.asset_type == "FIAT":
-                if asset.symbol.upper() in ["TRY", "TL"]:
-                    asset.previous_price = 1.0
-                    asset.current_price = 1.0
-                    asset.last_updated = datetime.now(TR_TZ)
-                    updated_count += 1
-                elif asset.symbol.upper() in ["USD", "DOLAR"]:
-                    usd_hist = yf.Ticker("TRY=X").history(period="5d")
-                    usd_valid = usd_hist["Close"].dropna() if not usd_hist.empty else None
-                    if usd_valid is not None and not usd_valid.empty:
-                        if len(usd_valid) > 1:
-                            asset.previous_price = float(usd_valid.iloc[-2])
-                        asset.current_price = float(usd_valid.iloc[-1])
-                        asset.last_updated = datetime.now(TR_TZ)
-                        updated_count += 1
-                elif asset.symbol.upper() in ["EUR", "EURO"]:
-                    eur_hist = yf.Ticker("EURTRY=X").history(period="5d")
-                    eur_valid = eur_hist["Close"].dropna() if not eur_hist.empty else None
-                    if eur_valid is not None and not eur_valid.empty:
-                        if len(eur_valid) > 1:
-                            asset.previous_price = float(eur_valid.iloc[-2])
-                        asset.current_price = float(eur_valid.iloc[-1])
-                        asset.last_updated = datetime.now(TR_TZ)
-                        updated_count += 1
-
-        except Exception as e:
-            logger.warning(
-                "Fiyat güncellenemedi | varlık=%s tip=%s | hata=%s",
-                asset.symbol, asset.asset_type, repr(e)
-            )
-            failed_assets.append(asset.symbol)
-            continue
-
-    db.commit()
-
-    if failed_assets:
-        logger.warning("Güncelleme tamamlandı — başarısız varlıklar: %s", failed_assets)
-    else:
-        logger.info("Tüm varlıklar başarıyla güncellendi. Toplam: %d", updated_count)
-
+    updated, failed = prices.refresh_all(db)
+    ov = services.build_overview(db)
+    if not ov["fx_missing"]:
+        services.save_snapshot(db, ov["total_assets"], ov["total_debts"])
     return {
-        "message": f"{updated_count} adet varlığın fiyatı güncellendi.",
-        "updated": updated_count,
-        "failed":  failed_assets,
+        "message": f"{updated} adet varlığın fiyatı güncellendi.",
+        "updated": updated,
+        "failed": failed,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────
+# İşlemler (alım / satım)
+# ─────────────────────────────────────────────────────────────────────
+def _asset_txns(db: Session, asset_id: int) -> list[services.Txn]:
+    rows = db.query(models.Transaction).filter(models.Transaction.asset_id == asset_id).all()
+    return [services.to_txn(t) for t in rows]
+
+
+def _validate(old: list[services.Txn], new: list[services.Txn]):
+    try:
+        services.check_mutation(old, new)
+    except LedgerError as e:
+        raise HTTPException(status_code=400, detail=f"Yetersiz miktar: {e}")
+
+
+@app.get("/transactions/", response_model=list[schemas.TransactionResponse])
+def read_transactions(asset_id: Optional[int] = None, db: Session = Depends(get_db)):
+    q = db.query(models.Transaction)
+    if asset_id is not None:
+        q = q.filter(models.Transaction.asset_id == asset_id)
+    return q.order_by(models.Transaction.transaction_date.desc(), models.Transaction.id.desc()).all()
 
 
 @app.post("/transactions/", response_model=schemas.TransactionResponse)
 def create_transaction(txn: schemas.TransactionCreate, db: Session = Depends(get_db)):
-    if txn.quantity < 0:
-        txns = db.query(models.Transaction).filter(
-            models.Transaction.asset_id == txn.asset_id
-        ).order_by(models.Transaction.transaction_date).all()
-
-        buy_lots = []
-        for t in txns:
-            if t.quantity > 0:
-                buy_lots.append({'qty': t.quantity, 'price': t.unit_price})
-            elif t.quantity < 0:
-                sell_qty = abs(t.quantity)
-                for lot in buy_lots:
-                    if sell_qty <= 0:
-                        break
-                    if lot['qty'] >= sell_qty:
-                        lot['qty'] -= sell_qty
-                        sell_qty = 0
-                    else:
-                        sell_qty -= lot['qty']
-                        lot['qty'] = 0
-
-        available_qty = sum(lot['qty'] for lot in buy_lots)
-        requested_sell = abs(txn.quantity)
-
-        if requested_sell > available_qty:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Yetersiz lot: Satmaya çalıştığınız miktar ({requested_sell:.4f}) "
-                       f"eldeki miktarı ({available_qty:.4f}) aşıyor."
-            )
-
-    db_txn = models.Transaction(**txn.dict())
+    if not db.query(models.Asset).filter(models.Asset.id == txn.asset_id).first():
+        raise HTTPException(status_code=404, detail="Varlık bulunamadı")
+    if abs(txn.quantity) < 1e-9:
+        raise HTTPException(status_code=400, detail="Miktar sıfır olamaz.")
+    old = _asset_txns(db, txn.asset_id)
+    _validate(old, old + [services.Txn(txn.quantity, txn.unit_price, txn.transaction_date)])
+    db_txn = models.Transaction(**txn.model_dump())
     db.add(db_txn)
     db.commit()
     db.refresh(db_txn)
     return db_txn
 
 
+@app.put("/transactions/{txn_id}", response_model=schemas.TransactionResponse)
+def update_transaction(txn_id: int, body: schemas.TransactionUpdate, db: Session = Depends(get_db)):
+    txn = db.query(models.Transaction).filter(models.Transaction.id == txn_id).first()
+    if not txn:
+        raise HTTPException(status_code=404, detail="İşlem bulunamadı")
+    if abs(body.quantity) < 1e-9:
+        raise HTTPException(status_code=400, detail="Miktar sıfır olamaz.")
+    old = _asset_txns(db, txn.asset_id)
+    new = [t for t in old if t.id != txn_id] + [
+        services.Txn(body.quantity, body.unit_price, body.transaction_date, txn_id)
+    ]
+    _validate(old, new)
+    txn.quantity, txn.unit_price, txn.transaction_date = body.quantity, body.unit_price, body.transaction_date
+    db.commit()
+    db.refresh(txn)
+    return txn
+
+
+@app.delete("/transactions/{txn_id}")
+def delete_transaction(txn_id: int, db: Session = Depends(get_db)):
+    txn = db.query(models.Transaction).filter(models.Transaction.id == txn_id).first()
+    if not txn:
+        raise HTTPException(status_code=404, detail="İşlem bulunamadı")
+    old = _asset_txns(db, txn.asset_id)
+    _validate(old, [t for t in old if t.id != txn_id])
+    db.delete(txn)
+    db.commit()
+    return {"message": "İşlem silindi."}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Borçlar
+# ─────────────────────────────────────────────────────────────────────
 @app.post("/debts/", response_model=schemas.DebtResponse)
 def create_debt(debt: schemas.DebtCreate, db: Session = Depends(get_db)):
-    db_debt = models.Debt(**debt.dict())
+    db_debt = models.Debt(**debt.model_dump())
     db.add(db_debt)
     db.commit()
     db.refresh(db_debt)
@@ -460,15 +313,16 @@ def create_debt(debt: schemas.DebtCreate, db: Session = Depends(get_db)):
 
 @app.get("/debts/", response_model=list[schemas.DebtResponse])
 def read_debts(db: Session = Depends(get_db)):
-    return db.query(models.Debt).all()
+    return db.query(models.Debt).order_by(models.Debt.id).all()
 
 
 @app.delete("/debts/{debt_id}")
 def delete_debt(debt_id: int, db: Session = Depends(get_db)):
     debt = db.query(models.Debt).filter(models.Debt.id == debt_id).first()
-    if debt:
-        db.delete(debt)
-        db.commit()
+    if not debt:
+        raise HTTPException(status_code=404, detail="Borç bulunamadı")
+    db.delete(debt)
+    db.commit()
     return {"message": "Silindi"}
 
 
@@ -484,75 +338,77 @@ def toggle_installment(inst_id: int, db: Session = Depends(get_db)):
 
 @app.post("/debts/schedules/")
 def create_debt_schedule(schedule: schemas.DebtScheduleCreate, db: Session = Depends(get_db)):
-    new_debt = models.Debt(name=schedule.name, total_amount=schedule.total_amount)
+    if schedule.total_amount <= 0:
+        raise HTTPException(status_code=400, detail="Tutar sıfırdan büyük olmalı.")
+    if not 1 <= schedule.installments_count <= 480:
+        raise HTTPException(status_code=400, detail="Taksit sayısı 1 ile 480 arasında olmalı.")
+    if schedule.interest_rate < 0:
+        raise HTTPException(status_code=400, detail="Faiz oranı negatif olamaz.")
+    if schedule.group_id is not None and not db.get(models.DebtGroup, schedule.group_id):
+        raise HTTPException(status_code=404, detail="Grup bulunamadı")
+
+    start = schedule.start_date or today_tr()
+    plan = services.build_installments(
+        schedule.total_amount, schedule.installments_count, schedule.interest_rate, start
+    )
+    total_repayment = round(sum(a for _, a in plan), 2)
+
+    new_debt = models.Debt(name=schedule.name.strip(), total_amount=total_repayment, group_id=schedule.group_id)
     db.add(new_debt)
+    db.flush()
+    for due, amount in plan:
+        db.add(models.DebtInstallment(debt_id=new_debt.id, amount=amount, due_date=due, is_paid=False))
     db.commit()
-    db.refresh(new_debt)
-
-    installment_amount = round(schedule.total_amount / schedule.installments_count, 2)
-
-    for i in range(schedule.installments_count):
-        due_date = schedule.start_date + relativedelta(months=i)
-
-        if i == schedule.installments_count - 1:
-            already_paid = installment_amount * (schedule.installments_count - 1)
-            amount = round(schedule.total_amount - already_paid, 2)
-        else:
-            amount = installment_amount
-
-        new_inst = models.DebtInstallment(
-            debt_id=new_debt.id,
-            amount=amount,
-            due_date=due_date,
-            is_paid=False
-        )
-        db.add(new_inst)
-
-    db.commit()
-    return {"message": f"{schedule.name} planı oluşturuldu."}
+    return {
+        "message": f"{new_debt.name} planı oluşturuldu.",
+        "debt_id": new_debt.id,
+        "total_repayment": total_repayment,
+        "installment_amount": plan[0][1],
+    }
 
 
-# =====================================================================
-# DEBT GROUP — Borç Grubu Endpoint'leri
-# =====================================================================
-
+# ─────────────────────────────────────────────────────────────────────
+# Borç grupları
+# ─────────────────────────────────────────────────────────────────────
 def _compute_group_stats(group: models.DebtGroup) -> dict:
-    """Bir grubun ödenen/kalan/yüzde istatistiklerini hesaplar."""
-    total_paid      = 0.0
-    total_remaining = 0.0
+    paid = remaining = 0.0
     for debt in group.debts:
         for inst in debt.installments:
             if inst.is_paid:
-                total_paid += inst.amount
+                paid += inst.amount
             else:
-                total_remaining += inst.amount
-    total = total_paid + total_remaining
-    progress_pct = round((total_paid / total) * 100, 2) if total > 0 else 0.0
+                remaining += inst.amount
+    total = paid + remaining
     return {
-        "total_paid":      total_paid,
-        "total_remaining": total_remaining,
-        "progress_pct":    progress_pct,
+        "total_paid": paid,
+        "total_remaining": remaining,
+        "progress_pct": round(paid / total * 100, 2) if total > 0 else 0.0,
+    }
+
+
+def _group_response(g: models.DebtGroup) -> dict:
+    return {
+        "id": g.id,
+        "name": g.name,
+        "description": g.description,
+        "contracted_amount": g.contracted_amount,
+        "debts": g.debts,
+        **_compute_group_stats(g),
     }
 
 
 @app.post("/debt-groups/", response_model=schemas.DebtGroupResponse)
 def create_debt_group(group: schemas.DebtGroupCreate, db: Session = Depends(get_db)):
-    db_group = models.DebtGroup(**group.dict())
+    db_group = models.DebtGroup(**group.model_dump())
     db.add(db_group)
     db.commit()
     db.refresh(db_group)
-    stats = _compute_group_stats(db_group)
-    return {**db_group.__dict__, **stats}
+    return _group_response(db_group)
 
 
 @app.get("/debt-groups/", response_model=list[schemas.DebtGroupResponse])
 def read_debt_groups(db: Session = Depends(get_db)):
-    groups = db.query(models.DebtGroup).all()
-    result = []
-    for g in groups:
-        stats = _compute_group_stats(g)
-        result.append({**g.__dict__, **stats})
-    return result
+    return [_group_response(g) for g in db.query(models.DebtGroup).order_by(models.DebtGroup.id).all()]
 
 
 @app.delete("/debt-groups/{group_id}")
@@ -560,30 +416,25 @@ def delete_debt_group(group_id: int, db: Session = Depends(get_db)):
     group = db.query(models.DebtGroup).filter(models.DebtGroup.id == group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Grup bulunamadı")
-    # Bağlı borçların group_id'sini NULL'a çek — borçları silme
-    for debt in group.debts:
+    for debt in group.debts:  # borçları silme, sadece gruptan çıkar
         debt.group_id = None
+    name = group.name
     db.delete(group)
     db.commit()
-    return {"message": f"'{group.name}' grubu silindi, borçlar korundu."}
+    return {"message": f"'{name}' grubu silindi, borçlar korundu."}
 
 
 @app.put("/debts/{debt_id}/assign-group")
-def assign_debt_to_group(
-    debt_id: int,
-    payload: schemas.AssignGroupRequest,
-    db: Session = Depends(get_db)
-):
+def assign_debt_to_group(debt_id: int, payload: schemas.AssignGroupRequest, db: Session = Depends(get_db)):
     debt = db.query(models.Debt).filter(models.Debt.id == debt_id).first()
     if not debt:
         raise HTTPException(status_code=404, detail="Borç bulunamadı")
-
+    group = None
     if payload.group_id is not None:
         group = db.query(models.DebtGroup).filter(models.DebtGroup.id == payload.group_id).first()
         if not group:
             raise HTTPException(status_code=404, detail="Grup bulunamadı")
-
     debt.group_id = payload.group_id
     db.commit()
-    action = f"'{group.name}' grubuna atandı" if payload.group_id else "gruptan çıkarıldı"
+    action = f"'{group.name}' grubuna atandı" if group else "gruptan çıkarıldı"
     return {"message": f"'{debt.name}' {action}."}

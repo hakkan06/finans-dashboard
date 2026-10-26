@@ -1,33 +1,52 @@
-# 💰 Finans ve Varlık Yönetim Paneli
+# Finans paneli
 
-Bu proje, kişisel varlıkları (Hisse, Fon, Emtia, Döviz) ve borçları tek bir merkezden, gerçek zamanlı piyasa verileriyle takip etmeyi sağlayan, Kubernetes üzerinde çalışan tam otonom bir finansal gösterge panelidir.
+Kişisel varlıkları (hisse, fon, altın, döviz) ve borçları tek yerden takip eden panel. Net servetin her gün otomatik kaydedilir ve grafikte izlenir.
 
-## ✨ Temel Özellikler
+## Ekranlar
 
-- **Gerçek Zamanlı Fiyatlama:** Amerikan Borsası (Yahoo Finance), Borsa İstanbul (TR_STOCK), TEFAS Yatırım Fonları, Döviz ve Altın piyasaları otomatik olarak taranır.
-- **Akıllı FIFO Algoritması:** Varlıkların kâr/zarar ve stopaj (vergi) hesaplamaları Backend üzerinde otomatik yapılır.
-- **Borç ve Likidite Yönetimi:** Otomatik taksit planlayıcı ile borçlar takip edilir. Ay sonu likidite projeksiyonu ile borç-varlık dengesi analiz edilir.
-- **Otonom Trend Analizi:** Kubernetes CronJob sayesinde sistem her gece (23:59) sessizce piyasa kapanış değerlerini ve net serveti veritabanına işler.
-- **Profesyonel Görselleştirme:** Plotly destekli, interaktif "Investing.com" stili finansal büyüme grafikleri sunar.
+- **Özet:** net servet, günlük değişim, yaklaşan ödemeler, varlık dağılımı
+- **Varlıklar:** ekle, sat, düzenle, sil; her varlığın işlem geçmişi ve kâr/zarar durumu
+- **Borçlar:** faizli veya faizsiz taksit planı, gruplar, taksiti tek dokunuşla ödendi işaretleme, 12 aylık yük
+- **Günlük takip:** net servet ve varlık/borç grafiği, günlük kayıtlar
 
-## 🏗️ Mimari ve Teknoloji Yığını
+Telefonda alt menü ve ortadaki **+** düğmesiyle, bilgisayarda sol menüyle kullanılır. Koyu tema sistem ayarına uyar.
 
-Proje iki ana mikroservisten ve bir veritabanından oluşmaktadır:
+## Yapı
 
-- **Backend:** `FastAPI` (Python) - İş mantığı, muhasebe hesaplamaları, API endpoint'leri ve dış veri kaynakları (yfinance, tefas) entegrasyonu.
-- **Frontend:** `Streamlit` (Python) - Reaktif, hızlı ve kullanıcı dostu arayüz.
-- **Veritabanı:** `PostgreSQL` / `SQLite` (SQLAlchemy ORM ile) - Kalıcı veri saklama.
-- **Dağıtım:** `Docker` & `Kubernetes` (K8s) - Konteyner mimarisi ve orkestrasyon.
-- **CI/CD:** `GitLab CI/CD` - Koda yapılan her *push* işleminde imajları derleyen ve Kubernetes kümesini *Rolling Update* ile kesintisiz güncelleyen otonom boru hattı.
+| Parça | Teknoloji | Klasör |
+|---|---|---|
+| Arayüz | React (esbuild ile derlenir), nginx ile sunulur | `finans-frontend/` |
+| API | FastAPI + SQLAlchemy | `finans-backend/` |
+| Veritabanı | PostgreSQL | `k8s/postgres.yaml` |
+| Yedek | Her gece 03:00 `pg_dump` → Google Drive | `db-backup/`, `k8s/backup-cronjob.yaml` |
+| Dağıtım | k3s + GitHub Actions (VPS üzerindeki runner) | `.github/workflows/deploy.yml` |
 
-## 🚀 Kurulum ve Dağıtım
+Arayüz, API'ye aynı alan adı altında `/api/...` yoluyla ulaşır (nginx iletir); ayrı bir API adresi yoktur.
 
-Sistem tamamen CI/CD boru hattı üzerinden yönetilmektedir. Manuel müdahaleye gerek kalmadan K8s üzerine deploy edilir.
+### Hesaplamalar nerede?
 
-1. **Gereksinimler:** Çalışır durumda bir Kubernetes Cluster'ı, yapılandırılmış GitLab Runner (`shell` executor) ve `kubectl` yetkileri.
-2. **Değişikliklerin Canlıya Alınması:**
-   Projeye yeni bir özellik eklendiğinde standart git komutlarıyla ana dala gönderilir:
-   ```bash
-   git add .
-   git commit -m "feat: yeni özellik eklendi"
-   git push origin main
+Tüm hesaplar backend'dedir (`finans-backend/app/services.py`): FIFO maliyet ve gerçekleşen kâr, fon stopajı (%17,5), dolar kuru, net servet, taksit planı. Arayüz sadece gösterir. Her gece 22:00'de (TR) ve fiyatlar elle güncellendiğinde günün kaydı sunucuda yazılır.
+
+Faizli kredide girilen tutar anaparadır; **aylık** faiz oranıyla eşit taksitli (annüite) plan çıkarılır.
+
+## Yerelde deneme
+
+Arayüzü gerçek veritabanı olmadan görmek için:
+
+```bash
+cd finans-frontend
+npm install
+npm run dev        # http://localhost:5173 (örnek verili sahte API ile)
+```
+
+Backend testleri:
+
+```bash
+cd finans-backend
+pip install -r requirements.txt -r requirements-dev.txt
+DATABASE_URL=sqlite:///./test.db python -m pytest -q
+```
+
+## Canlıya alma
+
+`main` dalına push edilince runner imajları derler ve k3s'e uygular. Gizli bilgiler (`finans-db-secret`, `finans-mail-secret`, `rclone-config`) repoda yoktur; `k8s/db-secret.example.yaml` örnektir.

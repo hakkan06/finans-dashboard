@@ -17,13 +17,18 @@ spec:
         image: finans-frontend:latest
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 8501
-        env:
-        - name: TZ
-          value: "Europe/Istanbul"
-        - name: API_URL
-          # Frontend'in, Backend'e K8s iç ağından ulaşması için servis adını veriyoruz
-          value: "http://finans-backend-service:8000"
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 80
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            memory: 128Mi
 
 ---
 apiVersion: v1
@@ -35,5 +40,5 @@ spec:
     app: finans-frontend
   ports:
     - protocol: TCP
-      port: 8501
-      targetPort: 8501
+      port: 80
+      targetPort: 80

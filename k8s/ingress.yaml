@@ -9,7 +9,6 @@ spec:
   tls:
   - hosts:
     - finans.185.229.119.58.nip.io
-    - api.185.229.119.58.nip.io
     secretName: finans-tls-secret
   rules:
   - host: finans.185.229.119.58.nip.io
@@ -21,14 +20,4 @@ spec:
           service:
             name: finans-frontend-service
             port:
-              number: 8501
-  - host: api.185.229.119.58.nip.io
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: finans-backend-service
-            port:
-              number: 8000
+              number: 80
