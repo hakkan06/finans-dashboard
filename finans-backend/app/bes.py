@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Tuple
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint, inspect, text
 from sqlalchemy.orm import Session, relationship
 
 from .database import get_db
@@ -109,6 +109,34 @@ class BESEvent(Base):
     note = Column(String, nullable=True)
 
     account = relationship("BESAccount", back_populates="events")
+
+
+
+def migrate(engine) -> list:
+    """Var olan BES tablolarına eksik sütunları ekler.
+
+    `create_all` yalnızca olmayan tabloları oluşturur, var olan tabloya sütun eklemez. BES'in ilk sürümünde
+    oluşan `bes_accounts` tablosunu yeni şemaya yükseltmek için gerekir. Yeni sütunların hepsi boş (NULL)
+    olabilir ve kod boş değerleri varsayılanla karşılar. Eklenen sütun adlarını döner; tekrar çalıştırmak zararsızdır.
+    """
+    added = []
+    insp = inspect(engine)
+    prep = engine.dialect.identifier_preparer
+    for table in (BESAccount.__table__, BESHolding.__table__, BESAllocation.__table__, BESFund.__table__, BESEvent.__table__):
+        if not insp.has_table(table.name):
+            continue
+        existing = {c["name"] for c in insp.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in existing:
+                continue
+            ine = "IF NOT EXISTS " if engine.dialect.name == "postgresql" else ""  # birden fazla kopya aynı anda açılırsa
+            ddl = f"ALTER TABLE {prep.quote(table.name)} ADD COLUMN {ine}{prep.quote(col.name)} {col.type.compile(dialect=engine.dialect)}"
+            with engine.begin() as conn:
+                conn.execute(text(ddl))
+            added.append(f"{table.name}.{col.name}")
+    if added:
+        logger.info("BES şeması güncellendi: %s", ", ".join(added))
+    return added
 
 
 # --- ŞEMALAR ----------------------------------------------------------------

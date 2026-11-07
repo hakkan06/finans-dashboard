@@ -18,7 +18,7 @@ function nextLine(b) {
 
 /** Varlıklar sayfasının altındaki BES bölümü. BES likit olmadığı için net servete dahil edilmez. */
 export default function BesPanel() {
-  const { bes, besNet, besTotal, besMonthly, besReturn } = useData();
+  const { bes, besError, besNet, besTotal, besMonthly, besReturn } = useData();
   const { open } = useSheets();
   const forfeited = bes.reduce((a, b) => a + b.forfeited_state, 0);
   const missing = [...new Set(bes.flatMap((b) => b.missing_prices))];
@@ -34,9 +34,15 @@ export default function BesPanel() {
         </button>
       </header>
 
-      {bes.length === 0 ? (
+      {besError && (
+        <div className="callout callout--bad" role="alert">
+          <p>BES verileri alınamadı: {besError}</p>
+        </div>
+      )}
+
+      {bes.length === 0 && !besError ? (
         <p className="muted panel__empty">Henüz BES hesabı yok. Fonlarını, aylık katkını ve devlet katkısı hak ediş tarihlerini buradan takip edebilirsin.</p>
-      ) : (
+      ) : bes.length === 0 ? null : (
         <>
           <dl className="kv-grid">
             <div className="kv">

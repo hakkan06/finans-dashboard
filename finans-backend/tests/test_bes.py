@@ -207,3 +207,24 @@ def test_next_month_due_does_not_drift():
     assert bes.next_month_due(date(2026, 2, 28), 28) == date(2026, 3, 28)
     assert bes.next_month_due(date(2026, 1, 31), 5) == date(2026, 2, 5)
     assert bes.next_month_due(date(2026, 12, 5), 5) == date(2027, 1, 5)
+
+
+def test_migrate_upgrades_legacy_table():
+    """BES'in ilk sürümünden kalan bes_accounts tablosuna yeni sütunlar eklenir (create_all eklemez)."""
+    from sqlalchemy import create_engine, inspect, text
+
+    eng = create_engine("sqlite://")
+    with eng.begin() as c:
+        c.execute(text(
+            "CREATE TABLE bes_accounts (id INTEGER PRIMARY KEY, name VARCHAR, company VARCHAR, system_entry_date DATE, "
+            "contract_start_date DATE, own_principal FLOAT, own_balance FLOAT, state_balance FLOAT, "
+            "retirement_eligible BOOLEAN, balance_updated DATE)"
+        ))
+        c.execute(text("INSERT INTO bes_accounts (id, name, system_entry_date) VALUES (1, 'Eski', '2022-03-01')"))
+    added = bes.migrate(eng)
+    cols = {c["name"] for c in inspect(eng).get_columns("bes_accounts")}
+    assert {"birth_date", "monthly_contribution", "contribution_day", "state_rate", "next_contribution"} <= cols
+    assert "bes_accounts.birth_date" in added
+    assert bes.migrate(eng) == []  # ikinci çalıştırma bir şey yapmaz
+    with eng.begin() as c:  # eski kayıt korunur
+        assert c.execute(text("SELECT name FROM bes_accounts")).scalar() == "Eski"
