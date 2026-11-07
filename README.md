@@ -7,6 +7,7 @@ Kişisel varlıkları (hisse, fon, altın, döviz) ve borçları tek yerden taki
 - **Özet:** net servet, günlük değişim, yaklaşan ödemeler, varlık dağılımı
 - **Varlıklar:** ekle, sat, düzenle, sil; her varlığın işlem geçmişi ve kâr/zarar durumu
 - **Borçlar:** faizli veya faizsiz taksit planı, gruplar, taksiti tek dokunuşla ödendi işaretleme, 12 aylık yük
+- **BES:** Bireysel emeklilik hesapları; sisteme giriş tarihine göre devlet katkısı hak ediş takvimi (%15 / %35 / %60 / %100), bugün çıkılırsa tahmini net değer. Likit olmadığı için net servete dahil edilmez.
 - **Günlük takip:** net servet ve varlık/borç grafiği, günlük kayıtlar
 
 Telefonda alt menü ve ortadaki **+** düğmesiyle, bilgisayarda sol menüyle kullanılır. Koyu tema sistem ayarına uyar.

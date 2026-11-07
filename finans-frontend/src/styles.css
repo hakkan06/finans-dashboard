@@ -1866,3 +1866,39 @@ select.input {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── BES ─────────────────────────────────────────────────────── */
+.bes {
+  margin-top: 20px;
+}
+.bes__note {
+  margin: 10px 2px 4px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.bes__row {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.bes__row:hover .row-line__title {
+  text-decoration: underline;
+}
+.bes__check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.bes__check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--lagoon);
+}
