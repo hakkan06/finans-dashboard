@@ -55,23 +55,43 @@ const history = EMPTY ? [] : (() => {
 })();
 
 
-// ── BES (sahte veri; hak ediş hesabı backend'dekiyle aynı mantık) ──
+// ── BES (sahte veri; hesaplama backend'dekiyle aynı mantık) ──
 const addYears = (s, n) => { const [y, m, d] = s.split("-").map(Number); return iso(new Date(Date.UTC(y + n, m - 1, d))); };
-let bes = EMPTY ? [] : [{ id: 1, name: "Anadolu Hayat BES", company: "Anadolu Hayat", system_entry_date: addYears(iso(today), -4), contract_start_date: addYears(iso(today), -2), own_principal: 100000, own_balance: 130000, state_balance: 20000, retirement_eligible: false, balance_updated: iso(today) }];
+const addMonthsIso = (s, n) => { const [y, m, d] = s.split("-").map(Number); return iso(new Date(Date.UTC(y, m - 1 + n, d))); };
+const bfunds = { DEMO1: { name: "Demo Büyüme Emeklilik Fonu", price: 2.5, previous_price: 2.48 }, DEMO2: { name: "Demo Dengeli Emeklilik Fonu", price: 4, previous_price: 4.02 }, DEMO3: { name: "Demo Para Piyasası Emeklilik Fonu", price: 1.2, previous_price: 1.2 } };
+Object.values(bfunds).forEach((f) => (f.price_date = iso(today)));
+const hold = (c, o, st, cost) => ({ fund_code: c, own_units: o, state_units: st, own_cost: cost });
+let bes = EMPTY ? [] : [
+  { id: 1, name: "Anadolu Hayat BES", company: "Anadolu Hayat", system_entry_date: addYears(iso(today), -4), contract_start_date: addYears(iso(today), -2), birth_date: "1990-05-20", retirement_eligible: false,
+    monthly_contribution: 2000, contribution_day: 5, state_rate: 0.2, next_contribution: addMonthsIso(iso(today).slice(0, 8) + "05", 1),
+    holdings: [hold("DEMO1", 30000, 6000, 62000), hold("DEMO2", 12000, 2400, 44000)], allocations: [{ fund_code: "DEMO1", percent: 60 }, { fund_code: "DEMO2", percent: 40 }], events: [] },
+  { id: 2, name: "Allianz BES", company: "Allianz", system_entry_date: addYears(iso(today), -4), contract_start_date: addYears(iso(today), -1), birth_date: "1990-05-20", retirement_eligible: false,
+    monthly_contribution: 1500, contribution_day: 12, state_rate: 0.2, next_contribution: addMonthsIso(iso(today).slice(0, 8) + "12", 1),
+    holdings: [hold("DEMO3", 40000, 8000, 52000)], allocations: [{ fund_code: "DEMO3", percent: 100 }], events: [] },
+];
 const TIERS = [[3, 0.15], [6, 0.35], [10, 0.6]];
-function besOut(b) {
+const ageOn = (b, t) => { const [y, m, d] = b.split("-").map(Number); const [ty, tm, td] = t.split("-").map(Number); return ty - y - (tm < m || (tm === m && td < d) ? 1 : 0); };
+function besOut(a) {
   const t = iso(today);
-  const ratio = b.retirement_eligible ? 1 : TIERS.reduce((r, [y, v]) => (t >= addYears(b.system_entry_date, y) ? v : r), 0);
-  const rate = b.retirement_eligible ? 0.05 : 0.15;
-  const vested = b.state_balance * ratio;
-  const tax = (Math.max(b.own_balance - b.own_principal, 0) + vested) * rate;
-  const milestones = TIERS.map(([years, r]) => ({ years, due_date: addYears(b.system_entry_date, years), ratio: r, reached: t >= addYears(b.system_entry_date, years) }));
-  const next = b.retirement_eligible ? null : milestones.find((m) => !m.reached) || null;
-  return { ...b, years_in_system: Math.round(((today - new Date(b.system_entry_date)) / 86400000 / 365.25) * 100) / 100, total_balance: b.own_balance + b.state_balance,
-    vest_ratio: ratio, vested_state: vested, forfeited_state: b.state_balance - vested, tax, net_value: b.own_balance + vested - tax,
-    next_milestone: next, days_to_next: next ? Math.round((new Date(next.due_date) - new Date(t)) / 86400000) : null,
-    gain_at_next: next ? b.state_balance * (next.ratio - ratio) * (1 - rate) : null, milestones };
+  const rd = a.birth_date ? [addYears(a.system_entry_date, 10), addYears(a.birth_date, 56)].sort().pop() : null;
+  const eligible = rd ? t >= rd : a.retirement_eligible;
+  const ratio = eligible ? 1 : TIERS.reduce((r, [y, v]) => (t >= addYears(a.system_entry_date, y) ? v : r), 0);
+  const rate = eligible ? 0.05 : 0.15;
+  let ownV = 0, stV = 0, cost = 0; const missing = [];
+  const rows = a.holdings.map((h) => { const f = bfunds[h.fund_code]; const p = f?.price ?? null; const ov = p ? h.own_units * p : 0, sv = p ? h.state_units * p : 0; if (!p) missing.push(h.fund_code); ownV += ov; stV += sv; cost += h.own_cost;
+    return { fund_code: h.fund_code, fund_name: f?.name ?? null, own_units: h.own_units, state_units: h.state_units, price: p, price_date: f?.price_date ?? null, own_value: ov, state_value: sv, own_cost: h.own_cost, own_pl: p ? ov - h.own_cost : 0, share_pct: 0 }; });
+  rows.forEach((r) => (r.share_pct = ownV + stV > 0 ? ((r.own_value + r.state_value) / (ownV + stV)) * 100 : 0));
+  const vested = stV * ratio, tax = (Math.max(ownV - cost, 0) + vested) * rate;
+  const milestones = TIERS.map(([years, r]) => ({ years, due_date: addYears(a.system_entry_date, years), ratio: r, reached: t >= addYears(a.system_entry_date, years) }));
+  const next = eligible ? null : milestones.find((m) => !m.reached) || null;
+  return { id: a.id, name: a.name, company: a.company, system_entry_date: a.system_entry_date, contract_start_date: a.contract_start_date, birth_date: a.birth_date, age: a.birth_date ? ageOn(a.birth_date, t) : null,
+    years_in_system: Math.round(((today - new Date(a.system_entry_date)) / 86400000 / 365.25) * 100) / 100,
+    own_principal: cost, own_balance: ownV, state_balance: stV, total_balance: ownV + stV, own_return: missing.length ? 0 : ownV - cost,
+    vest_ratio: ratio, vested_state: vested, forfeited_state: stV - vested, tax, net_value: ownV + vested - tax, retirement_eligible: eligible, retirement_date: rd,
+    next_milestone: next, days_to_next: next ? Math.round((new Date(next.due_date) - new Date(t)) / 86400000) : null, gain_at_next: next ? stV * (next.ratio - ratio) * (1 - rate) : null,
+    milestones, holdings: rows, missing_prices: missing, monthly_contribution: a.monthly_contribution, contribution_day: a.contribution_day, state_rate: a.state_rate, next_contribution: a.next_contribution, allocations: a.allocations };
 }
+const logEv = (a, kind, fund_code, note, amount = null) => a.events.unshift({ id: nid++, event_date: iso(today), kind, fund_code, units: null, amount, note });
 
 function fifo(list) {
   const lots = []; let realized = 0;
@@ -119,9 +139,39 @@ async function api(req, res, path, q) {
   const body = await new Promise((r) => { let s = ""; req.on("data", (c) => (s += c)); req.on("end", () => r(s ? JSON.parse(s) : null)); });
   const m = req.method; let x;
   if (m === "GET" && path === "/bes/") return json(res, bes.map(besOut));
-  if (m === "POST" && path === "/bes/") { const b = { id: nid++, balance_updated: iso(today), ...body }; bes.push(b); return json(res, besOut(b)); }
-  if (m === "PUT" && (x = path.match(/^\/bes\/(\d+)$/))) { const b = bes.find((b) => b.id === +x[1]); if (!b) return err(res, 404, "BES hesabı bulunamadı"); Object.assign(b, body, { balance_updated: iso(today) }); return json(res, besOut(b)); }
-  if (m === "DELETE" && (x = path.match(/^\/bes\/(\d+)$/))) { bes = bes.filter((b) => b.id !== +x[1]); return json(res, { message: "ok" }); }
+  if (m === "POST" && path === "/bes/refresh") return json(res, { updated: Object.keys(bfunds).length, failed: [], applied_months: 0 });
+  if (m === "POST" && path === "/bes/") {
+    const codes = [...(body.holdings || []).map((h) => h.fund_code), ...(body.allocations || []).map((h) => h.fund_code)].map((c) => c.trim().toUpperCase());
+    const unk = codes.find((c) => !bfunds[c]); if (unk) return err(res, 422, `${unk} kodlu emeklilik fonu TEFAS'ta bulunamadı. Kodu kontrol et.`);
+    if (body.monthly_contribution > 0 && Math.abs((body.allocations || []).reduce((s, a) => s + a.percent, 0) - 100) > 0.01) return err(res, 422, "Fon dağılımı yüzdelerinin toplamı %100 olmalı.");
+    const a = { id: nid++, name: body.name, company: body.company, system_entry_date: body.system_entry_date, contract_start_date: body.contract_start_date, birth_date: body.birth_date, retirement_eligible: !!body.retirement_eligible,
+      monthly_contribution: body.monthly_contribution || 0, contribution_day: body.contribution_day || 1, state_rate: body.state_rate ?? 0.2, next_contribution: body.monthly_contribution ? body.first_contribution_date || addMonthsIso(iso(today).slice(0, 8) + String(body.contribution_day || 1).padStart(2, "0"), 1) : null,
+      holdings: (body.holdings || []).map((h) => hold(h.fund_code.trim().toUpperCase(), h.own_units, h.state_units, h.own_cost)), allocations: (body.allocations || []).map((x) => ({ fund_code: x.fund_code.trim().toUpperCase(), percent: x.percent })), events: [] };
+    bes.push(a); return json(res, besOut(a));
+  }
+  if ((x = path.match(/^\/bes\/(\d+)(\/.*)?$/))) {
+    const a = bes.find((b) => b.id === +x[1]); if (!a) return err(res, 404, "BES hesabı bulunamadı"); const sub = x[2] || "";
+    if (m === "GET" && sub === "/events") return json(res, a.events);
+    if (m === "PUT" && !sub) { const { allocations, first_contribution_date, ...rest } = body; Object.assign(a, rest); if (allocations) a.allocations = allocations; if (first_contribution_date) a.next_contribution = first_contribution_date; return json(res, besOut(a)); }
+    if (m === "DELETE" && !sub) { bes = bes.filter((b) => b.id !== a.id); return json(res, { message: "ok" }); }
+    let y;
+    if ((y = sub.match(/^\/holdings\/(.+)$/))) {
+      const code = decodeURIComponent(y[1]).trim().toUpperCase();
+      if (m === "PUT") { if (!bfunds[code]) return err(res, 422, `${code} kodlu emeklilik fonu TEFAS'ta bulunamadı. Kodu kontrol et.`); const h = a.holdings.find((h) => h.fund_code === code); if (h) Object.assign(h, body); else a.holdings.push(hold(code, body.own_units, body.state_units, body.own_cost)); logEv(a, "adjust", code, "Pay adedi elle girildi"); return json(res, besOut(a)); }
+      if (m === "DELETE") { a.holdings = a.holdings.filter((h) => h.fund_code !== code); logEv(a, "adjust", code, "Fon hesaptan kaldırıldı"); return json(res, besOut(a)); }
+    }
+    if (m === "POST" && sub === "/switch") {
+      const src = a.holdings.find((h) => h.fund_code === body.from_fund.toUpperCase()); const to = body.to_fund.trim().toUpperCase();
+      if (!src) return err(res, 404, `${body.from_fund} bu hesapta yok.`); if (!bfunds[to]) return err(res, 422, `${to} kodlu emeklilik fonu TEFAS'ta bulunamadı. Kodu kontrol et.`);
+      const k = body.percent / 100, r = bfunds[src.fund_code].price / bfunds[to].price; let d = a.holdings.find((h) => h.fund_code === to); if (!d) a.holdings.push((d = hold(to, 0, 0, 0)));
+      d.own_units += src.own_units * k * r; d.state_units += src.state_units * k * r; d.own_cost += src.own_cost * k; src.own_units *= 1 - k; src.state_units *= 1 - k; src.own_cost *= 1 - k;
+      a.holdings = a.holdings.filter((h) => h.own_units > 1e-9 || h.state_units > 1e-9); logEv(a, "switch", to, `${src.fund_code} → ${to} (%${body.percent})`); return json(res, besOut(a));
+    }
+    if (m === "POST" && sub === "/reconcile") {
+      const o = besOut(a); if (body.own_balance != null) a.holdings.forEach((h) => (h.own_units *= body.own_balance / o.own_balance)); if (body.state_balance != null) a.holdings.forEach((h) => (h.state_units *= body.state_balance / o.state_balance));
+      logEv(a, "adjust", null, "Ekstreyle düzeltildi"); return json(res, besOut(a));
+    }
+  }
   if (m === "GET" && path === "/overview") return json(res, overview());
   if (m === "GET" && path === "/portfolio/summary") return json(res, summary().filter((i) => q.get("include_empty") === "true" || i.has_position));
   if (m === "GET" && path === "/debts/") return json(res, debts);

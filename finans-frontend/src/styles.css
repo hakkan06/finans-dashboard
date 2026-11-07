@@ -1902,3 +1902,41 @@ select.input {
   height: 18px;
   accent-color: var(--lagoon);
 }
+.bes__rows {
+  display: grid;
+  gap: 8px;
+}
+.bes__rowfields {
+  display: grid;
+  grid-template-columns: 1fr 110px auto;
+  gap: 8px;
+  align-items: center;
+}
+.bes__fundfields {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.bes__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.bes__fundval {
+  display: grid;
+  text-align: right;
+  margin-right: 6px;
+}
+.bes__fundval small {
+  font-size: 12.5px;
+}
+@media (max-width: 640px) {
+  .bes__fundfields {
+    grid-template-columns: 1fr 1fr auto;
+  }
+  .bes__fundfields > :first-child {
+    grid-column: 1 / -1;
+  }
+}

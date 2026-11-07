@@ -88,7 +88,9 @@ export function DataProvider({ children }) {
     // BES likit değildir: net servete/geçmiş kayıtlarına girmez, ayrı gösterilir.
     const besNet = data.bes.reduce((a, b) => a + b.net_value, 0);
     const besTotal = data.bes.reduce((a, b) => a + b.total_balance, 0);
-    return { holdings, empty, priceTime, besNet, besTotal };
+    const besMonthly = data.bes.reduce((a, b) => a + b.monthly_contribution, 0);
+    const besReturn = data.bes.reduce((a, b) => a + b.own_return, 0);
+    return { holdings, empty, priceTime, besNet, besTotal, besMonthly, besReturn };
   }, [data]);
 
   /** Geçmiş + bugünün canlı değeri (gece kaydı henüz yoksa da grafik güncel görünür). */
