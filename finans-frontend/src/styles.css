@@ -568,6 +568,28 @@ a {
 .strip__cell--bad dt {
   color: var(--bad);
 }
+.bes-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 0 -26px;
+  padding: 12px 26px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.bes-line__vals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+}
+.bes-line__vals strong {
+  margin-left: 4px;
+  color: var(--ink);
+  font-weight: 650;
+}
 
 /* ── Grafikler ───────────────────────────────────────────────── */
 .chart {
@@ -1769,6 +1791,10 @@ select.input {
   }
   .strip__cell {
     padding: 12px 14px 14px;
+  }
+  .bes-line {
+    margin: 0 -18px;
+    padding: 10px 18px;
   }
   .strip dd {
     font-size: 17px;

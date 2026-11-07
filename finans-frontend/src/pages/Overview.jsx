@@ -9,8 +9,32 @@ import { unpaidInstallments } from "../lib/debt.js";
 import { useSheets } from "../lib/sheets.jsx";
 import { useData } from "../lib/store.jsx";
 
+const BES_KEY = "finans.showBes";
+
+/** BES gösterimi cihaz başına hatırlanır; depolama kullanılamıyorsa kapalı başlar. */
+function useShowBes() {
+  const [on, setOn] = useState(() => {
+    try {
+      return localStorage.getItem(BES_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const set = (v) => {
+    setOn(v);
+    try {
+      localStorage.setItem(BES_KEY, v ? "1" : "0");
+    } catch {
+      /* depolama yok: yalnızca bu oturumda geçerli */
+    }
+  };
+  return [on, set];
+}
+
 export default function Overview({ go }) {
-  const { overview: ov, series, holdings, debts } = useData();
+  const { overview: ov, series, holdings, debts, bes, besNet } = useData();
+  const [showBes, setShowBes] = useShowBes();
+  const hasBes = bes.length > 0;
   const { open } = useSheets();
   const [range, setRange] = useState("3M");
   const [scrub, setScrub] = useState(null);
@@ -29,6 +53,7 @@ export default function Overview({ go }) {
   const delta = base !== null && shown.net !== undefined ? shown.net - base : null;
 
   const alloc = ov.allocation.map((a) => ({ key: a.asset_type, label: TYPE_LABEL[a.asset_type], value: a.value, color: TYPE_COLOR[a.asset_type] }));
+  if (hasBes && showBes && besNet > 0) alloc.push({ key: "BES", label: "BES (net)", value: besNet, color: "var(--ink-3)" });
   const allocTotal = alloc.reduce((a, p) => a + p.value, 0);
 
   if (empty) {
@@ -103,6 +128,24 @@ export default function Overview({ go }) {
             <dd>{money(ov.overdue_count ? ov.overdue_total : ov.due_this_month)}</dd>
           </div>
         </dl>
+
+        {hasBes && (
+          <div className="bes-line">
+            <button type="button" role="switch" aria-checked={showBes} className={`chip ${showBes ? "is-on" : ""}`} onClick={() => setShowBes(!showBes)}>
+              {showBes ? "BES gösteriliyor" : "BES'i göster"}
+            </button>
+            {showBes && (
+              <span className="bes-line__vals" aria-live="polite">
+                <span>
+                  BES (bugün çıkılırsa net) <strong>{money(besNet)}</strong>
+                </span>
+                <span>
+                  BES dahil net servet <strong>{money(ov.net_worth + besNet)}</strong>
+                </span>
+              </span>
+            )}
+          </div>
+        )}
       </section>
 
       <div className="cols">
