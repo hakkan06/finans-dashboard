@@ -106,6 +106,13 @@ def run_daily_job(background_tasks: BackgroundTasks, db: Session = Depends(get_d
     except Exception as e:  # noqa: BLE001  — fiyat hatası kaydı engellemesin
         logger.warning("Gece görevinde fiyat güncellemesi başarısız: %r", e)
 
+    try:  # BES fon fiyatları + vadesi gelen aylık katkılar
+        bes.refresh_all(db)
+        bes.apply_due_contributions(db)
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        logger.warning("Gece görevinde BES güncellemesi başarısız: %r", e)
+
     ov = services.build_overview(db)
     if ov["fx_missing"]:
         logger.warning("USD/TRY kuru alınamadı; bugünün kaydı yazılmadı.")
@@ -222,6 +229,13 @@ def update_asset_prices(db: Session = Depends(get_db)):
     _last_manual_refresh = now
 
     updated, failed = prices.refresh_all(db)
+    try:  # BES fon fiyatları + vadesi gelen aylık katkılar (hata varlık güncellemesini bozmasın)
+        _, bes_failed = bes.refresh_all(db)
+        bes.apply_due_contributions(db)
+        failed = failed + [f"BES:{c}" for c in bes_failed]
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        logger.warning("BES güncellemesi başarısız: %r", e)
     ov = services.build_overview(db)
     if not ov["fx_missing"]:
         services.save_snapshot(db, ov["total_assets"], ov["total_debts"])

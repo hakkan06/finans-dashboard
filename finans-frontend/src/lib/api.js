@@ -63,6 +63,11 @@ export const api = {
   createBes: (b) => req("POST", "/bes/", b),
   updateBes: (id, b) => req("PUT", `/bes/${id}`, b),
   deleteBes: (id) => req("DELETE", `/bes/${id}`),
+  besEvents: (id) => req("GET", `/bes/${id}/events`),
+  putBesHolding: (id, code, h) => req("PUT", `/bes/${id}/holdings/${encodeURIComponent(code)}`, h),
+  deleteBesHolding: (id, code) => req("DELETE", `/bes/${id}/holdings/${encodeURIComponent(code)}`),
+  switchBes: (id, s) => req("POST", `/bes/${id}/switch`, s),
+  reconcileBes: (id, r) => req("POST", `/bes/${id}/reconcile`, r),
 
   snapshot: () => req("POST", "/portfolio/snapshot"),
   deleteHistory: (date) => req("DELETE", `/portfolio/history/${date}`),

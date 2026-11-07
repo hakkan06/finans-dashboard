@@ -14,6 +14,8 @@ import AssetSheet from "./sheets/AssetSheet.jsx";
 import DebtSheet from "./sheets/DebtSheet.jsx";
 import DebtDetailSheet from "./sheets/DebtDetailSheet.jsx";
 import BesSheet from "./sheets/BesSheet.jsx";
+import BesDetailSheet from "./sheets/BesDetailSheet.jsx";
+import { BesFundSheet, BesReconcileSheet, BesSwitchSheet } from "./sheets/BesActionSheets.jsx";
 
 const PAGES = [
   { id: "overview", label: "Özet", icon: "home" },
@@ -21,7 +23,7 @@ const PAGES = [
   { id: "debts", label: "Borçlar", icon: "card" },
   { id: "growth", label: "Günlük takip", short: "Takip", icon: "chart" },
 ];
-const REGISTRY = { add: AddMenu, txn: TransactionSheet, asset: AssetSheet, debt: DebtSheet, debtDetail: DebtDetailSheet, bes: BesSheet };
+const REGISTRY = { add: AddMenu, txn: TransactionSheet, asset: AssetSheet, debt: DebtSheet, debtDetail: DebtDetailSheet, bes: BesSheet, besDetail: BesDetailSheet, besFund: BesFundSheet, besSwitch: BesSwitchSheet, besReconcile: BesReconcileSheet };
 
 function usePage() {
   const read = () => {
