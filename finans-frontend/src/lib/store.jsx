@@ -8,21 +8,23 @@ export const useData = () => useContext(Ctx);
 
 export function DataProvider({ children }) {
   const [state, setState] = useState({ ready: false, error: null });
-  const [data, setData] = useState({ overview: null, items: [], debts: [], groups: [], history: [] });
+  const [data, setData] = useState({ overview: null, items: [], debts: [], groups: [], history: [], bes: [] });
   const [refreshing, setRefreshing] = useState(false);
   const alive = useRef(true);
 
   const load = useCallback(async () => {
     try {
-      const [overview, items, debts, groups, history] = await Promise.all([
+      const [overview, items, debts, groups, history, bes] = await Promise.all([
         api.overview(),
         api.summary(),
         api.debts(),
         api.groups(),
         api.history(),
+        // BES alınamazsa (örn. eski sunucu sürümü) panonun geri kalanı yine açılsın.
+        api.bes().catch(() => []),
       ]);
       if (!alive.current) return;
-      setData({ overview, items, debts, groups, history });
+      setData({ overview, items, debts, groups, history, bes });
       setState({ ready: true, error: null });
     } catch (e) {
       if (!alive.current) return;
@@ -83,7 +85,10 @@ export function DataProvider({ children }) {
     const holdings = data.items.filter((i) => i.has_position);
     const empty = data.items.filter((i) => !i.has_position);
     const priceTime = parseServerTime(data.overview?.last_price_update);
-    return { holdings, empty, priceTime };
+    // BES likit değildir: net servete/geçmiş kayıtlarına girmez, ayrı gösterilir.
+    const besNet = data.bes.reduce((a, b) => a + b.net_value, 0);
+    const besTotal = data.bes.reduce((a, b) => a + b.total_balance, 0);
+    return { holdings, empty, priceTime, besNet, besTotal };
   }, [data]);
 
   /** Geçmiş + bugünün canlı değeri (gece kaydı henüz yoksa da grafik güncel görünür). */

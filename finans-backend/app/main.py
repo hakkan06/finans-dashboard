@@ -11,7 +11,7 @@ from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Quer
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import models, prices, schemas, services
+from . import bes, models, prices, schemas, services
 from .database import engine, get_db
 from .services import LedgerError, today_tr
 
@@ -25,6 +25,7 @@ logger = logging.getLogger("finans-api")
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Finans API")
+app.include_router(bes.router)
 
 MAIL_USER = os.getenv("MAIL_USER", "")
 MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "")

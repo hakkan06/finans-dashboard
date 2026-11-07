@@ -42,6 +42,7 @@ export const api = {
   debts: () => req("GET", "/debts/"),
   groups: () => req("GET", "/debt-groups/"),
   history: () => req("GET", "/portfolio/history"),
+  bes: () => req("GET", "/bes/"),
   transactions: (assetId) => req("GET", `/transactions/?asset_id=${assetId}`),
 
   createAsset: (a) => req("POST", "/assets/", a),
@@ -58,6 +59,10 @@ export const api = {
   createGroup: (g) => req("POST", "/debt-groups/", g),
   deleteGroup: (id) => req("DELETE", `/debt-groups/${id}`),
   assignGroup: (debtId, groupId) => req("PUT", `/debts/${debtId}/assign-group`, { group_id: groupId }),
+
+  createBes: (b) => req("POST", "/bes/", b),
+  updateBes: (id, b) => req("PUT", `/bes/${id}`, b),
+  deleteBes: (id) => req("DELETE", `/bes/${id}`),
 
   snapshot: () => req("POST", "/portfolio/snapshot"),
   deleteHistory: (date) => req("DELETE", `/portfolio/history/${date}`),

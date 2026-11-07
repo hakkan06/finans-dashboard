@@ -12,6 +12,7 @@ export default function AddMenu({ onClose }) {
   const choices = [
     { icon: "wallet", title: "Alım / satım işlemi", text: "Elindeki bir varlığa alış veya satış ekle.", act: () => go("txn", {}) },
     { icon: "layers", title: "Yeni varlık", text: "Hisse, fon, altın veya döviz tanımla ve ilk alışını gir.", act: () => go("txn", { startNew: true }) },
+    { icon: "calendar", title: "BES hesabı", text: "Bireysel emeklilik birikimini ve devlet katkısı hak ediş takvimini takip et.", act: () => go("bes", {}) },
     { icon: "card", title: "Borç veya kredi", text: "Taksit planı otomatik oluşturulur.", act: () => go("debt", {}) },
   ];
   return (

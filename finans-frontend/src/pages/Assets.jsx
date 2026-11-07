@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import BesPanel from "../components/BesPanel.jsx";
 import Icon from "../components/Icon.jsx";
 import { Segmented } from "../components/controls.jsx";
 import { TYPE_COLOR, TYPE_LABEL, TYPES, money, pct, qty as fmtQty } from "../lib/format.js";
@@ -163,6 +164,8 @@ export default function Assets() {
           )}
         </>
       )}
+
+      <BesPanel />
     </div>
   );
 }

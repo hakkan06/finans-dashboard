@@ -54,6 +54,25 @@ const history = EMPTY ? [] : (() => {
   return out;
 })();
 
+
+// ── BES (sahte veri; hak ediş hesabı backend'dekiyle aynı mantık) ──
+const addYears = (s, n) => { const [y, m, d] = s.split("-").map(Number); return iso(new Date(Date.UTC(y + n, m - 1, d))); };
+let bes = EMPTY ? [] : [{ id: 1, name: "Anadolu Hayat BES", company: "Anadolu Hayat", system_entry_date: addYears(iso(today), -4), contract_start_date: addYears(iso(today), -2), own_principal: 100000, own_balance: 130000, state_balance: 20000, retirement_eligible: false, balance_updated: iso(today) }];
+const TIERS = [[3, 0.15], [6, 0.35], [10, 0.6]];
+function besOut(b) {
+  const t = iso(today);
+  const ratio = b.retirement_eligible ? 1 : TIERS.reduce((r, [y, v]) => (t >= addYears(b.system_entry_date, y) ? v : r), 0);
+  const rate = b.retirement_eligible ? 0.05 : 0.15;
+  const vested = b.state_balance * ratio;
+  const tax = (Math.max(b.own_balance - b.own_principal, 0) + vested) * rate;
+  const milestones = TIERS.map(([years, r]) => ({ years, due_date: addYears(b.system_entry_date, years), ratio: r, reached: t >= addYears(b.system_entry_date, years) }));
+  const next = b.retirement_eligible ? null : milestones.find((m) => !m.reached) || null;
+  return { ...b, years_in_system: Math.round(((today - new Date(b.system_entry_date)) / 86400000 / 365.25) * 100) / 100, total_balance: b.own_balance + b.state_balance,
+    vest_ratio: ratio, vested_state: vested, forfeited_state: b.state_balance - vested, tax, net_value: b.own_balance + vested - tax,
+    next_milestone: next, days_to_next: next ? Math.round((new Date(next.due_date) - new Date(t)) / 86400000) : null,
+    gain_at_next: next ? b.state_balance * (next.ratio - ratio) * (1 - rate) : null, milestones };
+}
+
 function fifo(list) {
   const lots = []; let realized = 0;
   for (const t of [...list].sort((a, b) => (a.transaction_date + (a.quantity > 0 ? 0 : 1) + String(a.id).padStart(6, "0")).localeCompare(b.transaction_date + (b.quantity > 0 ? 0 : 1) + String(b.id).padStart(6, "0")))) {
@@ -99,6 +118,10 @@ const json = (res, data, code = 200) => { res.writeHead(code, { "Content-Type": 
 async function api(req, res, path, q) {
   const body = await new Promise((r) => { let s = ""; req.on("data", (c) => (s += c)); req.on("end", () => r(s ? JSON.parse(s) : null)); });
   const m = req.method; let x;
+  if (m === "GET" && path === "/bes/") return json(res, bes.map(besOut));
+  if (m === "POST" && path === "/bes/") { const b = { id: nid++, balance_updated: iso(today), ...body }; bes.push(b); return json(res, besOut(b)); }
+  if (m === "PUT" && (x = path.match(/^\/bes\/(\d+)$/))) { const b = bes.find((b) => b.id === +x[1]); if (!b) return err(res, 404, "BES hesabı bulunamadı"); Object.assign(b, body, { balance_updated: iso(today) }); return json(res, besOut(b)); }
+  if (m === "DELETE" && (x = path.match(/^\/bes\/(\d+)$/))) { bes = bes.filter((b) => b.id !== +x[1]); return json(res, { message: "ok" }); }
   if (m === "GET" && path === "/overview") return json(res, overview());
   if (m === "GET" && path === "/portfolio/summary") return json(res, summary().filter((i) => q.get("include_empty") === "true" || i.has_position));
   if (m === "GET" && path === "/debts/") return json(res, debts);
