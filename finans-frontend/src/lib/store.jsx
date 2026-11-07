@@ -8,12 +8,13 @@ export const useData = () => useContext(Ctx);
 
 export function DataProvider({ children }) {
   const [state, setState] = useState({ ready: false, error: null });
-  const [data, setData] = useState({ overview: null, items: [], debts: [], groups: [], history: [], bes: [] });
+  const [data, setData] = useState({ overview: null, items: [], debts: [], groups: [], history: [], bes: [], besError: null });
   const [refreshing, setRefreshing] = useState(false);
   const alive = useRef(true);
 
   const load = useCallback(async () => {
     try {
+      let besError = null;
       const [overview, items, debts, groups, history, bes] = await Promise.all([
         api.overview(),
         api.summary(),
@@ -21,10 +22,10 @@ export function DataProvider({ children }) {
         api.groups(),
         api.history(),
         // BES alınamazsa (örn. eski sunucu sürümü) panonun geri kalanı yine açılsın.
-        api.bes().catch(() => []),
+        api.bes().catch((e) => ((besError = e.message), [])),
       ]);
       if (!alive.current) return;
-      setData({ overview, items, debts, groups, history, bes });
+      setData({ overview, items, debts, groups, history, bes, besError });
       setState({ ready: true, error: null });
     } catch (e) {
       if (!alive.current) return;

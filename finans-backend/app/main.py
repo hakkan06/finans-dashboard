@@ -7,8 +7,9 @@ from email.mime.text import MIMEText
 from datetime import date
 from typing import Optional
 
-from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Query
-from sqlalchemy.exc import IntegrityError
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from . import bes, models, prices, schemas, services
@@ -23,9 +24,20 @@ logging.basicConfig(
 logger = logging.getLogger("finans-api")
 
 models.Base.metadata.create_all(bind=engine)
+try:  # create_all var olan tabloya sütun eklemez; BES şemasını gerekirse yükselt
+    bes.migrate(engine)
+except Exception:  # noqa: BLE001  — migrasyon hatası uygulamanın açılmasını engellemesin
+    logger.exception("BES şema güncellemesi başarısız")
 
 app = FastAPI(title="Finans API")
 app.include_router(bes.router)
+
+
+@app.exception_handler(SQLAlchemyError)
+async def db_error_handler(request: Request, exc: SQLAlchemyError):
+    """Yakalanmamış veritabanı hataları arayüzde "Beklenmeyen hata" yerine anlamlı görünsün (ayrıntı günlükte)."""
+    logger.exception("Veritabanı hatası | %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": f"Veritabanı hatası ({type(exc).__name__}). Ayrıntı sunucu günlüğünde."})
 
 MAIL_USER = os.getenv("MAIL_USER", "")
 MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "")
