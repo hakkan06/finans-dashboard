@@ -81,7 +81,15 @@ export default function Overview({ go }) {
         <div className="hero__top">
           <div>
             <div className="hero__label">{scrub ? fmtDateLong(scrub.date) : "Net servet"}</div>
-            <div className="hero__value">{money(shown.net)}</div>
+            <div className="hero__value">
+              {money(shown.net)}
+              {/* Geçmiş bir güne bakarken o günün kuru bilinmediği için dolar karşılığı yalnızca güncel değerde gösterilir. */}
+              {!scrub && ov.usd_try > 0 && (
+                <span className="hero__usd" title={`Güncel kur: ${ov.usd_try.toFixed(2).replace(".", ",")} ₺`}>
+                  ({money(shown.net / ov.usd_try, { currency: "USD" })})
+                </span>
+              )}
+            </div>
             <div className="hero__deltas">
               {!scrub && (
                 <span className={`delta delta--${ov.day_change > 0 ? "good" : ov.day_change < 0 ? "bad" : "calm"}`}>
