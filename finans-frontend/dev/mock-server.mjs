@@ -188,6 +188,19 @@ async function api(req, res, path, q) {
   }
   if (m === "DELETE" && (x = path.match(/^\/assets\/(\d+)$/))) { const i = assets.findIndex((a) => a.id === +x[1]); if (i < 0) return err(res, 404, "Varlık bulunamadı"); assets.splice(i, 1); for (let k = txns.length - 1; k >= 0; k--) if (txns[k].asset_id === +x[1]) txns.splice(k, 1); return json(res, { message: "ok" }); }
   if (m === "POST" && path === "/assets/update-prices") { assets.forEach((a) => (a.last_updated = stamp())); return json(res, { message: "ok", updated: assets.length, failed: [] }); }
+  if (m === "POST" && path === "/transactions/settle") {
+    const t = body.transaction; const ids = body.pay_installment_ids || []; const nds = body.new_debts || [];
+    if (t.quantity >= 0) return err(res, 400, "Borç ödemesi yalnızca satış işlemiyle yapılabilir.");
+    const all = debts.flatMap((d) => d.installments); const found = ids.map((id) => all.find((i) => i.id === id));
+    if (found.some((i) => !i)) return err(res, 404, "Seçilen taksitlerden biri bulunamadı. Sayfayı yenileyip tekrar dene.");
+    if (found.some((i) => i.is_paid)) return err(res, 400, "Seçilen taksitlerden bazıları zaten ödenmiş. Sayfayı yenileyip tekrar dene.");
+    if (nds.some((n) => !n.name.trim())) return err(res, 400, "Yeni borç için ad gerekli.");
+    if (nds.some((n) => !(n.amount > 0))) return err(res, 400, "Yeni borç tutarı sıfırdan büyük olmalı.");
+    if (!fifo(txns.filter((k) => k.asset_id === t.asset_id).concat({ ...t, id: 1e9 }))) return err(res, 400, "Yetersiz miktar: satış, o tarihte eldeki miktarı aşıyor.");
+    const tx = { id: nid++, ...t }; txns.push(tx); found.forEach((i) => (i.is_paid = true));
+    nds.forEach((n) => { const id = nid++; debts.push({ id, name: n.name.trim(), total_amount: n.amount, group_id: null, installments: [{ id: nid++, debt_id: id, amount: n.amount, due_date: n.due_date || t.transaction_date, is_paid: n.paid }] }); });
+    return json(res, { transaction: tx, paid_installments: found.length, created_debts: nds.length });
+  }
   if (m === "POST" && path === "/transactions/") { const list = txns.filter((t) => t.asset_id === body.asset_id).concat({ ...body, id: 1e9 }); if (!fifo(list)) return err(res, 400, "Yetersiz miktar: satış, o tarihte eldeki miktarı aşıyor."); const t = { id: nid++, ...body }; txns.push(t); return json(res, t); }
   if (m === "PUT" && (x = path.match(/^\/transactions\/(\d+)$/))) { const t = txns.find((t) => t.id === +x[1]); if (!t) return err(res, 404, "İşlem bulunamadı"); const list = txns.filter((k) => k.asset_id === t.asset_id && k.id !== t.id).concat({ ...t, ...body }); if (!fifo(list)) return err(res, 400, "Yetersiz miktar."); Object.assign(t, body); return json(res, t); }
   if (m === "DELETE" && (x = path.match(/^\/transactions\/(\d+)$/))) { const t = txns.find((t) => t.id === +x[1]); if (!t) return err(res, 404, "İşlem bulunamadı"); if (!fifo(txns.filter((k) => k.asset_id === t.asset_id && k.id !== t.id))) return err(res, 400, "Yetersiz miktar: bu alış silinirse satışlar açıkta kalır."); txns.splice(txns.indexOf(t), 1); return json(res, { message: "ok" }); }

@@ -137,3 +137,79 @@ def test_delete_asset_removes_transactions(client):
     assert client.delete(f"/assets/{a['id']}").status_code == 200
     assert client.get("/transactions/").json() == []
     assert client.delete(f"/assets/{a['id']}").status_code == 404
+
+
+# ── Satışla borç ödeme ───────────────────────────────────────────────
+def _setup_sale(client):
+    a = mk_asset(client, "TRY", "FIAT")
+    set_price(client, a["id"], 1.0)
+    base = {"asset_id": a["id"], "unit_price": 1.0, "transaction_date": "2026-03-01"}
+    assert client.post("/transactions/", json={**base, "quantity": 5000}).status_code == 200
+    r = client.post("/debts/schedules/", json={"name": "Kredi", "total_amount": 3000, "installments_count": 3, "start_date": "2026-01-01"})
+    assert r.status_code == 200, r.text
+    insts = client.get("/debts/").json()[0]["installments"]
+    return a, base, insts
+
+
+def test_settle_sale_pays_installments_and_creates_debts(client):
+    a, base, insts = _setup_sale(client)
+    r = client.post("/transactions/settle", json={
+        "transaction": {**base, "quantity": -1500},
+        "pay_installment_ids": [insts[0]["id"], insts[1]["id"]],
+        "new_debts": [
+            {"name": " Aidat ", "amount": 400, "paid": True},
+            {"name": "Kira", "amount": 250, "due_date": "2026-04-01", "paid": False},
+        ],
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["paid_installments"] == 2 and body["created_debts"] == 2
+    assert body["transaction"]["quantity"] == -1500
+
+    debts = {d["name"]: d for d in client.get("/debts/").json()}
+    assert [i["is_paid"] for i in debts["Kredi"]["installments"]] == [True, True, False]
+    aidat = debts["Aidat"]["installments"][0]  # ad kırpıldı, vade = satış tarihi, ödenmiş
+    assert aidat["is_paid"] and aidat["due_date"] == "2026-03-01" and aidat["amount"] == 400
+    kira = debts["Kira"]["installments"][0]
+    assert not kira["is_paid"] and kira["due_date"] == "2026-04-01"
+
+    ov = client.get("/overview").json()
+    assert ov["total_debts"] == 1250  # kalan kredi taksiti 1000 + ödenmemiş kira 250
+    assert ov["total_assets"] == 3500  # 5000 - 1500
+
+
+def test_settle_sale_is_atomic_on_ledger_error(client):
+    a, base, insts = _setup_sale(client)
+    r = client.post("/transactions/settle", json={
+        "transaction": {**base, "quantity": -9999},  # eldekinden fazla
+        "pay_installment_ids": [insts[0]["id"]],
+        "new_debts": [{"name": "Aidat", "amount": 400}],
+    })
+    assert r.status_code == 400
+    debts = client.get("/debts/").json()
+    assert len(debts) == 1 and not any(i["is_paid"] for i in debts[0]["installments"])
+    assert len(client.get("/transactions/", params={"asset_id": a["id"]}).json()) == 1
+
+
+def test_settle_sale_rejects_bad_input(client):
+    a, base, insts = _setup_sale(client)
+    sell = {**base, "quantity": -100}
+    # alış ile olmaz
+    assert client.post("/transactions/settle", json={"transaction": {**base, "quantity": 100}}).status_code == 400
+    # aynı taksit iki kez
+    assert client.post("/transactions/settle", json={"transaction": sell, "pay_installment_ids": [insts[0]["id"]] * 2}).status_code == 400
+    # olmayan taksit
+    assert client.post("/transactions/settle", json={"transaction": sell, "pay_installment_ids": [99999]}).status_code == 404
+    # geçersiz yeni borç
+    assert client.post("/transactions/settle", json={"transaction": sell, "new_debts": [{"name": "  ", "amount": 5}]}).status_code == 400
+    assert client.post("/transactions/settle", json={"transaction": sell, "new_debts": [{"name": "X", "amount": 0}]}).status_code == 400
+    # hiçbiri kaydedilmedi
+    assert len(client.get("/transactions/", params={"asset_id": a["id"]}).json()) == 1
+
+
+def test_settle_sale_rejects_already_paid_installment(client):
+    a, base, insts = _setup_sale(client)
+    client.put(f"/installments/{insts[0]['id']}/toggle")
+    r = client.post("/transactions/settle", json={"transaction": {**base, "quantity": -100}, "pay_installment_ids": [insts[0]["id"]]})
+    assert r.status_code == 400 and "zaten ödenmiş" in r.json()["detail"]
+    assert len(client.get("/transactions/", params={"asset_id": a["id"]}).json()) == 1

@@ -296,6 +296,59 @@ def create_transaction(txn: schemas.TransactionCreate, db: Session = Depends(get
     return db_txn
 
 
+@app.post("/transactions/settle", response_model=schemas.SaleSettleResponse)
+def settle_sale(req: schemas.SaleSettleRequest, db: Session = Depends(get_db)):
+    """Satışı kaydeder; aynı işlemde seçilen taksitleri ödendi yapar ve (isteğe bağlı) yeni borçlar açar.
+
+    Hepsi tek veritabanı işlemidir: herhangi bir doğrulama başarısız olursa hiçbir şey kaydedilmez.
+    """
+    txn = req.transaction
+    if txn.quantity >= 0:
+        raise HTTPException(status_code=400, detail="Borç ödemesi yalnızca satış işlemiyle yapılabilir.")
+    if not db.query(models.Asset).filter(models.Asset.id == txn.asset_id).first():
+        raise HTTPException(status_code=404, detail="Varlık bulunamadı")
+
+    ids = req.pay_installment_ids
+    if len(set(ids)) != len(ids):
+        raise HTTPException(status_code=400, detail="Aynı taksit birden fazla kez seçilmiş.")
+    insts = db.query(models.DebtInstallment).filter(models.DebtInstallment.id.in_(ids)).all() if ids else []
+    if len(insts) != len(ids):
+        raise HTTPException(status_code=404, detail="Seçilen taksitlerden biri bulunamadı. Sayfayı yenileyip tekrar dene.")
+    if any(i.is_paid for i in insts):
+        raise HTTPException(status_code=400, detail="Seçilen taksitlerden bazıları zaten ödenmiş. Sayfayı yenileyip tekrar dene.")
+
+    for nd in req.new_debts:
+        if not nd.name.strip():
+            raise HTTPException(status_code=400, detail="Yeni borç için ad gerekli.")
+        if not nd.amount > 0:
+            raise HTTPException(status_code=400, detail="Yeni borç tutarı sıfırdan büyük olmalı.")
+
+    old = _asset_txns(db, txn.asset_id)
+    _validate(old, old + [services.Txn(txn.quantity, txn.unit_price, txn.transaction_date)])
+
+    db_txn = models.Transaction(**txn.model_dump())
+    db.add(db_txn)
+    for inst in insts:
+        inst.is_paid = True
+    for nd in req.new_debts:
+        amount = round(nd.amount, 2)
+        debt = models.Debt(name=nd.name.strip(), total_amount=amount)
+        db.add(debt)
+        db.flush()
+        db.add(
+            models.DebtInstallment(
+                debt_id=debt.id, amount=amount, due_date=nd.due_date or txn.transaction_date, is_paid=nd.paid
+            )
+        )
+    db.commit()
+    db.refresh(db_txn)
+    return {
+        "transaction": schemas.TransactionResponse.model_validate(db_txn),
+        "paid_installments": len(insts),
+        "created_debts": len(req.new_debts),
+    }
+
+
 @app.put("/transactions/{txn_id}", response_model=schemas.TransactionResponse)
 def update_transaction(txn_id: int, body: schemas.TransactionUpdate, db: Session = Depends(get_db)):
     txn = db.query(models.Transaction).filter(models.Transaction.id == txn_id).first()

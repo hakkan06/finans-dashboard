@@ -50,6 +50,7 @@ export const api = {
   updatePrices: () => req("POST", "/assets/update-prices"),
 
   createTransaction: (t) => req("POST", "/transactions/", t),
+  settleSale: (b) => req("POST", "/transactions/settle", b),
   updateTransaction: (id, t) => req("PUT", `/transactions/${id}`, t),
   deleteTransaction: (id) => req("DELETE", `/transactions/${id}`),
 
