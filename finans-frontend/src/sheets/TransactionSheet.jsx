@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import Sheet from "../components/Sheet.jsx";
+import SaleDebts from "../components/SaleDebts.jsx";
 import { Field, NumberInput, Segmented, parseNum } from "../components/controls.jsx";
 import { toast } from "../components/feedback.jsx";
 import { api } from "../lib/api.js";
@@ -10,7 +11,7 @@ const NEW = "__new__";
 
 /** Alım/satım ekleme ve düzenleme. Yeni varlık da aynı formdan tanımlanır. */
 export default function TransactionSheet({ assetId = null, startNew = false, txn = null, onClose }) {
-  const { items, reload } = useData();
+  const { items, debts, reload } = useData();
   const editing = !!txn;
 
   const [sel, setSel] = useState(editing ? String(txn.asset_id) : startNew ? NEW : assetId ? String(assetId) : "");
@@ -26,6 +27,8 @@ export default function TransactionSheet({ assetId = null, startNew = false, txn
   const [formError, setFormError] = useState("");
   const [noPrice, setNoPrice] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [payIds, setPayIds] = useState([]);
+  const [newDebts, setNewDebts] = useState([]);
 
   const isNew = sel === NEW;
   const asset = useMemo(() => items.find((i) => String(i.asset_id) === sel), [items, sel]);
@@ -51,6 +54,9 @@ export default function TransactionSheet({ assetId = null, startNew = false, txn
   const p = parseNum(price);
   const total = q > 0 && p > 0 ? q * p : null;
   const holding = asset?.total_qty ?? 0;
+  const showDebts = side === "sell" && !editing && !isNew && !!asset;
+  // Satış tutarı TL cinsinden (ABD hissesinde kurla); kur yoksa karşılaştırma yapılmaz
+  const proceeds = total && asset && asset.fx > 0 ? total * asset.fx : null;
 
   function validate() {
     const e = {};
@@ -60,6 +66,7 @@ export default function TransactionSheet({ assetId = null, startNew = false, txn
     if (!(p > 0)) e.price = "Sıfırdan büyük bir fiyat gir.";
     if (!date) e.date = "Tarih seç.";
     if (side === "sell" && asset && q > holding + 1e-9) e.amount = `Elinde ${fmtQty(holding)} var.`;
+    if (showDebts && newDebts.some((n) => !n.name.trim() || !(parseNum(n.amount) > 0) || !n.due)) e.debts = "Yeni borç için ad, tutar ve vade gir (ya da satırı kaldır).";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -85,11 +92,22 @@ export default function TransactionSheet({ assetId = null, startNew = false, txn
         targetId = created.id;
       }
       const body = { quantity: side === "buy" ? q : -q, unit_price: p, transaction_date: date };
+      let extra = "";
       if (editing) await api.updateTransaction(txn.id, body);
-      else await api.createTransaction({ asset_id: targetId, ...body });
+      else if (showDebts && (payIds.length || newDebts.length)) {
+        // Satış, taksit ödemeleri ve yeni borçlar tek işlemde kaydolur (biri başarısızsa hiçbiri kaydolmaz)
+        const r = await api.settleSale({
+          transaction: { asset_id: targetId, ...body },
+          pay_installment_ids: payIds,
+          new_debts: newDebts.map((n) => ({ name: n.name.trim(), amount: parseNum(n.amount), due_date: n.due, paid: n.paid })),
+        });
+        extra = [r.paid_installments ? `${r.paid_installments} taksit ödendi` : "", r.created_debts ? `${r.created_debts} yeni borç eklendi` : ""].filter(Boolean).join(", ");
+      } else await api.createTransaction({ asset_id: targetId, ...body });
       await reload();
-      toast(editing ? "İşlem güncellendi" : side === "buy" ? "Alış kaydedildi" : "Satış kaydedildi", { tone: "good" });
+      toast(editing ? "İşlem güncellendi" : side === "buy" ? "Alış kaydedildi" : `Satış kaydedildi${extra ? ` · ${extra}` : ""}`, { tone: "good" });
       if (again) {
+        setPayIds([]);
+        setNewDebts([]);
         setAmount("");
         setCreatedReset(targetId);
       } else onClose();
@@ -252,6 +270,10 @@ export default function TransactionSheet({ assetId = null, startNew = false, txn
           <span>Toplam tutar</span>
           <strong>{total ? money(total, { decimals: 2, currency }) : "–"}</strong>
         </div>
+
+        {showDebts && (
+          <SaleDebts debts={debts} date={date} proceeds={proceeds} payIds={payIds} setPayIds={setPayIds} newDebts={newDebts} setNewDebts={setNewDebts} error={errors.debts} />
+        )}
 
         {formError && (
           <div className="callout callout--bad" role="alert">

@@ -1976,3 +1976,74 @@ select.input {
     grid-column: 1 / -1;
   }
 }
+
+/* ── Satışla borç öde ────────────────────────────────────────── */
+.sale-debts {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+.sale-debts .sheet__section small {
+  font-weight: 500;
+  margin-left: 6px;
+}
+.sale-debts__list {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.sale-debts__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  cursor: pointer;
+}
+.sale-debts__row.is-on {
+  border-color: var(--lagoon);
+  background: var(--good-wash);
+}
+.sale-debts__row input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--lagoon);
+  flex: none;
+}
+.sale-debts__name {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.sale-debts__name small {
+  font-size: 12.5px;
+}
+.sale-debts__amt {
+  font-weight: 650;
+  white-space: nowrap;
+}
+.sale-debts__new {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+}
+.sale-debts__newfoot {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px 12px;
+  align-items: center;
+}
+@media (max-width: 640px) {
+  .sale-debts__newfoot {
+    grid-template-columns: 1fr auto;
+  }
+  .sale-debts__newfoot .input {
+    grid-column: 1 / -1;
+  }
+}

@@ -139,6 +139,27 @@ class TransactionUpdate(TransactionBase):
     pass
 
 
+# ─── Satışla borç ödeme ───────────────────────────────────────────────
+class NewDebtOnSale(BaseModel):
+    """Satış sırasında kaydedilen, daha önce girilmemiş küçük borç (örn. aidat). Tek taksitli borç olarak açılır."""
+    name:     str
+    amount:   float
+    due_date: Optional[date] = None   # boşsa satış tarihi
+    paid:     bool = True             # bu satıştan ödendi mi
+
+
+class SaleSettleRequest(BaseModel):
+    transaction:         TransactionCreate
+    pay_installment_ids: List[int] = []
+    new_debts:           List[NewDebtOnSale] = []
+
+
+class SaleSettleResponse(BaseModel):
+    transaction:       TransactionResponse
+    paid_installments: int
+    created_debts:     int
+
+
 class AllocationItem(BaseModel):
     asset_type: str
     value:      float
